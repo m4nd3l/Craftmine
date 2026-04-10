@@ -10,6 +10,7 @@ public class Registry<T> {
     }
 
     public int getId() { return id; }
+    public short getIdShort() { return (short) id; }
 
     public T getInstance() { return instance; }
 }

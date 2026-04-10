@@ -10,9 +10,15 @@ public class WorldData {
     @SerializedName("world_name")
     private String worldName;
 
+    @SerializedName("seed")
+    private String worldSeed;
+
     public Camera getPlayer() { return player; }
     public WorldData setPlayer(Camera player) { this.player = player; return this; }
 
     public String getWorldName() { return worldName; }
     public WorldData setWorldName(String worldName) { this.worldName = worldName; return this; }
+
+    public String getWorldSeed() { return worldSeed; }
+    public WorldData setWorldSeed(Object worldSeed) { this.worldSeed = worldSeed.toString(); return this; }
 }

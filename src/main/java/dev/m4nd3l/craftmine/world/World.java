@@ -12,6 +12,8 @@ import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.IntUniform;
 import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.json.WorldData;
+import dev.m4nd3l.craftmine.world.gen.ChunkGenerator;
+import dev.m4nd3l.craftmine.world.gen.TerrainGenerator;
 import org.joml.Vector3f;
 
 import java.nio.file.Files;
@@ -22,39 +24,51 @@ import java.util.Set;
 
 public class World {
     private long glfwWindow;
+    private ShaderProgram shader;
+    private Texture blockAtlas;
+
     private WorldData data;
     private Map<ChunkCoordinates, Chunk> chunks;
+    private ChunkCoordinates lastCenter;
+
     private MFile worldSavePosition;
     private MFile dataSavePosition;
     private MFile chunksSavePosition;
-    private ShaderProgram shader;
-    private Texture blockAtlas;
-    private ChunkCoordinates lastCenter;
 
-    public World(long glfwWindow, String name) {
+    private ChunkGenerator chunkGenerator;
+
+    public World(long glfwWindow, String name, String seed) {
         this.glfwWindow = glfwWindow;
-        shader = RenderingOptimization.shaders.getOrCreate(
+        this.shader = RenderingOptimization.shaders.getOrCreate(
                 new MFile("assets", "shaders", "default.vert"),
                 new MFile("assets", "shaders", "default.frag"));
-        blockAtlas = new Texture(new MFile("assets", "textures", "blockAtlas.png"));
-        worldSavePosition = new MFile("data", "saves", name);
-        chunksSavePosition = new MFile(worldSavePosition, "chunks");
-        dataSavePosition = new MFile(worldSavePosition, "data.json");
-        if (worldSavePosition.exists())
-            data = Consts.gson.fromJson(dataSavePosition.readString(), WorldData.class);
-        else {
-            try {
+        this.blockAtlas = new Texture(new MFile("assets", "textures", "blockAtlas.png"));
+
+        this.worldSavePosition = new MFile("data", "saves", name);
+        this.chunksSavePosition = new MFile(worldSavePosition, "chunks");
+        this.dataSavePosition = new MFile(worldSavePosition, "data.json");
+
+        if (worldSavePosition.exists()) data = Consts.gson.fromJson(dataSavePosition.readString(), WorldData.class);
+        else try {
                 Files.createDirectories(worldSavePosition.getFile().toPath());
                 Files.createDirectories(chunksSavePosition.getFile().toPath());
                 new MFile(worldSavePosition, "data.json").writeString("", false);
             } catch (Exception e) { System.err.println(e); }
-        }
+
         if (data == null) data = new WorldData()
                 .setPlayer(new Camera(70.0f, 0.1f, 1000.0f, 1920, 1080,
-                    new Vector3f(0.0f, 0f, 0f)))
-                .setWorldName(name);
+                        new Vector3f(0.0f, 0f, 0f)))
+                .setWorldName(name)
+                .setWorldSeed(seed);
         if (chunks == null) chunks = new HashMap<>();
+
+        chunkGenerator = new ChunkGenerator(new TerrainGenerator(seed));
+
         updateLoadedChunks(data.getPlayer().getEntityPosition());
+    }
+
+    public World(long glfwWindow, String name) {
+        this(glfwWindow, name, String.valueOf(Math.random() * 101108356L));
     }
 
     // region INTERACTION
@@ -64,7 +78,7 @@ public class World {
     // region WORLD GEN
     public Chunk generateChunk(ChunkCoordinates coordinates) {
         Chunk chunk = new Chunk(coordinates);
-        chunk.generateNaturalSubChunk(new SubChunkCoordinates(coordinates.getX(), 0, coordinates.getZ()));
+        chunkGenerator.generate(chunk);
         return chunk;
     }
     // endregion
