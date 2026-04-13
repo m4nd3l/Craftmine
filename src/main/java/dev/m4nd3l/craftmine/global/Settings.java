@@ -8,7 +8,7 @@ public class Settings {
 
     static {
         MFile settingsFile = new MFile("data", "settings.json");
-        if (!settingsFile.exists()) settingsFile.create("{\"player_name\":\"Player\",\"render_distance\":10}");
+        if (!settingsFile.exists()) settingsFile.create("{\"player_name\":\"Player\",\"render_distance\":10,\"greedy_meshing\":false}");
         settings = Consts.gson.fromJson(settingsFile.readString(), SettingsData.class);
     }
 }

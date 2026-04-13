@@ -19,6 +19,8 @@ public class Craftmine {
 
     public Craftmine() { this(false); }
 
+    public World getCurrentWorld() { return currentWorld; }
+
     public void load(long glfwWindow) {
         this.glfwWindow = glfwWindow;
         Input.initialize(glfwWindow);
@@ -27,8 +29,6 @@ public class Craftmine {
         currentWorld = new World(
                 glfwWindow,
                 "default");
-
-        //currentWorld.generateNaturalSubChunk(new SubChunkCoordinates(0, 0, 0));
     }
 
     public void update(float delta) {
@@ -51,7 +51,5 @@ public class Craftmine {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 
-    public void terminate() {
-        if (currentWorld != null) currentWorld.delete();
-    }
+    public void terminate() { if (currentWorld != null) currentWorld.delete(); }
 }

@@ -7,25 +7,25 @@ import dev.m4nd3l.craftmine.global.Settings;
 import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
 import dev.m4nd3l.craftmine.renderer.opengl.ShaderProgram;
-import dev.m4nd3l.craftmine.renderer.opengl.Texture;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.IntUniform;
 import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.json.WorldData;
+import dev.m4nd3l.craftmine.renderer.world.SubChunkMesher;
+import dev.m4nd3l.craftmine.util.Mix;
+import dev.m4nd3l.craftmine.world.communication.Communication;
 import dev.m4nd3l.craftmine.world.gen.ChunkGenerator;
 import dev.m4nd3l.craftmine.world.gen.TerrainGenerator;
 import org.joml.Vector3f;
 
 import java.nio.file.Files;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class World {
     private long glfwWindow;
     private ShaderProgram shader;
-    private Texture blockAtlas;
 
     private WorldData data;
     private Map<ChunkCoordinates, Chunk> chunks;
@@ -37,12 +37,17 @@ public class World {
 
     private ChunkGenerator chunkGenerator;
 
+    private Queue<Mix<SubChunkCoordinates, Runnable>> meshTaskQueue;
+    private Queue<SubChunkCoordinates> readyToUpload;
+    private Set<SubChunkCoordinates> activeTasks = ConcurrentHashMap.newKeySet();
+    private Thread meshWorkerThread;
+    private volatile boolean running = true;
+
     public World(long glfwWindow, String name, String seed) {
         this.glfwWindow = glfwWindow;
         this.shader = RenderingOptimization.shaders.getOrCreate(
                 new MFile("assets", "shaders", "default.vert"),
                 new MFile("assets", "shaders", "default.frag"));
-        this.blockAtlas = new Texture(new MFile("assets", "textures", "blockAtlas.png"));
 
         this.worldSavePosition = new MFile("data", "saves", name);
         this.chunksSavePosition = new MFile(worldSavePosition, "chunks");
@@ -63,6 +68,21 @@ public class World {
         if (chunks == null) chunks = new HashMap<>();
 
         chunkGenerator = new ChunkGenerator(new TerrainGenerator(seed));
+
+        this.readyToUpload = new ConcurrentLinkedQueue<>();
+        this.meshTaskQueue = new ConcurrentLinkedQueue<>();
+        this.activeTasks = new HashSet<>();
+        this.meshWorkerThread = new Thread(() -> {
+            while (running) {
+                var mix = meshTaskQueue.poll();
+                if (mix != null) {
+                    var task = mix.getV2();
+                    if (task != null) task.run();
+                    else try { Thread.sleep(10); } catch (InterruptedException e) { break; }
+                } else try { Thread.sleep(10); } catch (InterruptedException e) { break; }
+            }
+        }, "Mesh-Worker");
+        this.meshWorkerThread.start();
 
         updateLoadedChunks(data.getPlayer().getEntityPosition());
     }
@@ -112,8 +132,7 @@ public class World {
         if (chunkFile.exists()) {
             chunk = Consts.gson.fromJson(chunkFile.readString(), Chunk.class);
             chunk.loadAfterInit();
-        }
-        else chunk = generateChunk(coordinates);
+        } else chunk = generateChunk(coordinates);
         chunks.put(coordinates, chunk);
     }
     public void unloadChunk(ChunkCoordinates coordinates, boolean removeFromMap) {
@@ -122,7 +141,31 @@ public class World {
         String content = Consts.gson.toJson(chunks.get(coordinates));
         if (chunkFile.exists()) chunkFile.writeString(content, false);
         else chunkFile.create(content);
+        chunks.get(coordinates).delete();
         if (removeFromMap) chunks.remove(coordinates);
+    }
+    // endregion
+    // region COMMUNICATION
+    public void getCommunication(SubChunkCoordinates coordinates, Communication communication) {
+        switch (communication) {
+            case REMESH_REQUEST: remeshRequest(coordinates);
+            default: break;
+        }
+    }
+    // endregion
+    // region RENDERING
+    private void remeshRequest(SubChunkCoordinates coordinates) {
+        if (activeTasks.contains(coordinates)) return;
+        Chunk interested = chunks.get(CoordinatesConverter.toChunk(coordinates));
+        if (interested == null) return;
+        activeTasks.add(coordinates);
+        SubChunk subChunk = interested.getSubChunk(coordinates);
+        meshTaskQueue.add(new Mix<>(coordinates, () -> {
+            var vertices = SubChunkMesher.generateMesh(coordinates, subChunk.getBlocks());
+            activeTasks.remove(coordinates);
+            subChunk.newMesh(vertices);
+            readyToUpload.add(coordinates);
+        }));
     }
     // endregion
     // region MAIN METHODS
@@ -131,17 +174,26 @@ public class World {
         data.getPlayer().processMouseMovement(Input.mouse, glfwWindow);
         data.getPlayer().updateMatrices();
         updateLoadedChunks(data.getPlayer().getEntityPosition());
-        chunks.forEach((coordinates, chunk) -> chunk.update(delta));
+        chunks.forEach((_, chunk) -> chunk.update(delta));
+        for (int i = 0; i < 5; i++) {
+            SubChunkCoordinates coordinates = readyToUpload.poll();
+            if (coordinates == null) continue;
+            getChunk(coordinates).upload(coordinates);
+        }
     }
+
     public void render() {
         shader.bind();
-        blockAtlas.bind();
+        Consts.texture.bind();
         data.getPlayer().uploadUniforms(shader);
         shader.uploadUniform(new IntUniform("blockTexture", shader.getShaderID(), 0));
-        chunks.forEach((coordinates, chunk) -> chunk.render());
-        blockAtlas.unbind();
+        chunks.forEach((_, chunk) -> chunk.render());
+        Consts.texture.unbind();
     }
+
     public void delete() {
+        running = false;
+        meshWorkerThread.interrupt();
         chunks.forEach((coordinates, chunk) -> {
             unloadChunk(coordinates, false);
             chunk.delete();

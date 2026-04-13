@@ -19,6 +19,12 @@ public class Chunk {
 
     public void loadAfterInit() { subChunks.forEach(SubChunk::postLoadInit); }
 
+    public void upload(SubChunkCoordinates coordinates) {
+        SubChunk subChunk = getSubChunk(coordinates);
+        if (subChunk == null) return;
+        subChunk.uploadToGPU();
+    }
+
     // region INTERACTION
     public void placeBlock(BlockCoordinates coordinates, BlockRegistry block) {
         getSubChunk(coordinates).placeBlock(CoordinatesConverter.toLocalSubChunk(coordinates), block);
