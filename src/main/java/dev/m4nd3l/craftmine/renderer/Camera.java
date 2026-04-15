@@ -7,24 +7,28 @@ import dev.m4nd3l.craftmine.renderer.input.Mouse;
 import dev.m4nd3l.craftmine.renderer.input.MouseKeys;
 import dev.m4nd3l.craftmine.renderer.opengl.ShaderProgram;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.Matrix4fUniform;
-import org.jetbrains.annotations.NotNull;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 
 public class Camera {
 
-    float FOV, nearPlane, farPlane;
-    int width, height;
+    private float FOV, nearPlane, farPlane;
+    private int width, height;
 
-    float speed = 8f;
-    float sensitivity = 100.0f;
+    private float speed = 16f;
+    private float sensitivity = 100.0f;
 
-    Vector3f cameraPosition,
+    private Vector3f cameraPosition,
             cameraOrientation = new Vector3f(0.0f, 0.0f, -1.0f),
             upDirection = new Vector3f(0.0f, 1.0f, 0.0f);
-    Matrix4f viewMatrix = new Matrix4f();
-    Matrix4f projectionMatrix = new Matrix4f();
+    private Matrix4f viewMatrix = new Matrix4f();
+    private Matrix4f projectionMatrix = new Matrix4f();
+    private Matrix4f combinedMatrix = new Matrix4f();
+
+    private FrustumIntersection frustum;
+    public transient boolean frustumFreeze;
 
     public Camera(float FOV, float nearPlane, float farPlane, int width, int height, Vector3f cameraPosition) {
         this.FOV = FOV;
@@ -33,17 +37,16 @@ public class Camera {
         this.width = width;
         this.height = height;
         this.cameraPosition = cameraPosition;
+        this.frustum = new FrustumIntersection();
+        frustumFreeze = false;
     }
 
-    public Matrix4f getViewMatrix() {
-        return viewMatrix;
-    }
+    public Camera() { }
 
-    public Matrix4f getProjectionMatrix() {
-        return projectionMatrix;
-    }
+    public Matrix4f getViewMatrix() { return viewMatrix; }
+    public Matrix4f getProjectionMatrix() { return projectionMatrix; }
 
-    public void processKeyboard(@NotNull Keyboard keyboard, float deltaTime) {
+    public void processKeyboard(Keyboard keyboard, float deltaTime) {
         float velocity = speed * deltaTime;
 
         if (keyboard.isKeyDown(KeyboardKeys.W))
@@ -74,11 +77,10 @@ public class Camera {
         if (keyboard.isKeyDown(KeyboardKeys.LEFT_SHIFT))
             cameraPosition.add(new Vector3f(upDirection).mul(-velocity));
 
-        if (keyboard.isKeyDown(KeyboardKeys.LEFT_CONTROL)) speed = 14.0f;
-        else speed = 8.0f;
+        if (keyboard.isKeyDown(KeyboardKeys.LEFT_CONTROL)) speed = 32.0f;
+        else speed = 16.0f;
 
     }
-
     public void processMouseMovement(Mouse mouse, long glfwWindow) {
         if (mouse.isButtonDown(MouseKeys.LEFT)) {
 
@@ -120,7 +122,7 @@ public class Camera {
         shader.uploadUniform(new Matrix4fUniform("viewMatrix", shader.getShaderID(), getViewMatrix()));
         shader.uploadUniform(new Matrix4fUniform("projectionMatrix", shader.getShaderID(), getProjectionMatrix()));
     }
-
+    public void updateFrustum() {combinedMatrix.set(projectionMatrix).mul(viewMatrix); frustum.set(combinedMatrix);}
 
     public void updateMatrices() {
         Vector3f center = new Vector3f(cameraPosition).add(cameraOrientation);
@@ -128,6 +130,8 @@ public class Camera {
         projectionMatrix.identity().perspective(
                 (float) Math.toRadians(FOV), (float) width / (float) height, nearPlane, farPlane);
     }
+
+    public boolean isInsideFrustum(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) { return frustum.testAab(minX, minY, minZ, maxX, maxY, maxZ); }
 
     public EntityCoordinates getEntityPosition() { return new EntityCoordinates(cameraPosition.x, cameraPosition.y, cameraPosition.z); }
 

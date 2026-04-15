@@ -2,7 +2,6 @@ package dev.m4nd3l.craftmine.registries;
 
 import dev.m4nd3l.craftmine.blocks.Block;
 import dev.m4nd3l.craftmine.blocks.BlockSettings;
-import dev.m4nd3l.craftmine.blocks.settings.Color;
 import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 
 import java.util.HashMap;
@@ -16,8 +15,10 @@ public class BlockRegistries {
     public static BlockRegistry GRASS = register(new BlockRegistry(2, 4, 2, 3,
             new Block("grass_block", BlockSettings.NONE)));
     public static BlockRegistry DIRT = register(new BlockRegistry(3, 4, new Block("dirt", BlockSettings.NONE)));
-    public static BlockRegistry BLACK = register(new BlockRegistry(4, 4, new Block("dirt",
-            new BlockSettings().color(new Color(0.0f, 0.0f, 0.0f)))));
+    public static BlockRegistry SANDSTONE = register(new BlockRegistry(4, 8, 6, 7,
+            new Block("sandstone", BlockSettings.NONE)));
+    public static BlockRegistry SAND = register(new BlockRegistry(5, 5, new Block("sand", BlockSettings.NONE)));
+
 
     private static BlockRegistry register(BlockRegistry registry) { blocks.put(registry.getId(), registry); return registry; }
     public static BlockRegistry getBlock(int id) { return blocks.get(id); }

@@ -1,11 +1,15 @@
 package dev.m4nd3l.craftmine.world;
 
+import com.sun.jdi.event.StepEvent;
+import dev.m4nd3l.craftmine.Main;
 import dev.m4nd3l.craftmine.coordinates.*;
 import dev.m4nd3l.craftmine.global.Consts;
 import dev.m4nd3l.craftmine.global.Input;
 import dev.m4nd3l.craftmine.global.Settings;
+import dev.m4nd3l.craftmine.registries.BlockRegistries;
 import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
+import dev.m4nd3l.craftmine.renderer.input.KeyboardKeys;
 import dev.m4nd3l.craftmine.renderer.opengl.ShaderProgram;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.IntUniform;
 import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
@@ -20,8 +24,10 @@ import org.joml.Vector3f;
 
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class World {
     private long glfwWindow;
@@ -31,17 +37,22 @@ public class World {
     private Map<ChunkCoordinates, Chunk> chunks;
     private ChunkCoordinates lastCenter;
 
+    private Queue<ChunkCoordinates> toLoad;
+
     private MFile worldSavePosition;
     private MFile dataSavePosition;
     private MFile chunksSavePosition;
 
     private ChunkGenerator chunkGenerator;
 
-    private Queue<Mix<SubChunkCoordinates, Runnable>> meshTaskQueue;
+    private BlockingQueue<Mix<SubChunkCoordinates, Runnable>> meshTaskQueue1;
+    private BlockingQueue<Mix<SubChunkCoordinates, Runnable>> meshTaskQueue2;
     private Queue<SubChunkCoordinates> readyToUpload;
-    private Set<SubChunkCoordinates> activeTasks = ConcurrentHashMap.newKeySet();
-    private Thread meshWorkerThread;
-    private volatile boolean running = true;
+    private Set<SubChunkCoordinates> activeTasks1;
+    private Set<SubChunkCoordinates> activeTasks2;
+    private Thread meshWorkerThread1;
+    private Thread meshWorkerThread2;
+    private volatile boolean running = true, is1 = true;
 
     public World(long glfwWindow, String name, String seed) {
         this.glfwWindow = glfwWindow;
@@ -67,33 +78,51 @@ public class World {
                 .setWorldSeed(seed);
         if (chunks == null) chunks = new HashMap<>();
 
-        chunkGenerator = new ChunkGenerator(new TerrainGenerator(seed));
+        chunkGenerator = new ChunkGenerator(seed);
+
+        toLoad = new ConcurrentLinkedQueue<>();
 
         this.readyToUpload = new ConcurrentLinkedQueue<>();
-        this.meshTaskQueue = new ConcurrentLinkedQueue<>();
-        this.activeTasks = new HashSet<>();
-        this.meshWorkerThread = new Thread(() -> {
+        this.meshTaskQueue1 = new LinkedBlockingQueue<>();
+        this.meshTaskQueue2 = new LinkedBlockingQueue<>();
+        this.activeTasks1 = ConcurrentHashMap.newKeySet();
+        this.activeTasks2 = ConcurrentHashMap.newKeySet();
+        this.meshWorkerThread1 = new Thread(() -> {
             while (running) {
-                var mix = meshTaskQueue.poll();
-                if (mix != null) {
+                try {
+                    var mix = meshTaskQueue1.take();
                     var task = mix.getV2();
-                    if (task != null) task.run();
-                    else try { Thread.sleep(10); } catch (InterruptedException e) { break; }
-                } else try { Thread.sleep(10); } catch (InterruptedException e) { break; }
+                    if (task == null) continue;
+                    task.run();
+                } catch (InterruptedException e) { break; }
             }
-        }, "Mesh-Worker");
-        this.meshWorkerThread.start();
+        }, "Mesh-Worker1");
+        this.meshWorkerThread1.start();
 
-        updateLoadedChunks(data.getPlayer().getEntityPosition());
+        this.meshWorkerThread2 = new Thread(() -> {
+            while (running) {
+                try {
+                    var mix = meshTaskQueue2.take();
+                    var task = mix.getV2();
+                    if (task == null) continue;
+                    task.run();
+                } catch (InterruptedException e) { break; }
+            }
+        }, "Mesh-Worker2");
+        this.meshWorkerThread2.start();
+
+        updateLoadedChunks(data.getPlayer().getEntityPosition(), -1);
     }
 
-    public World(long glfwWindow, String name) {
-        this(glfwWindow, name, String.valueOf(Math.random() * 101108356L));
-    }
+    public World(long glfwWindow, String name) { this(glfwWindow, name, String.valueOf(Math.random() * 101108356L)); }
 
     // region INTERACTION
-    public void placeBlock(BlockCoordinates coordinates, BlockRegistry block) { getChunk(coordinates).placeBlock(coordinates, block); }
-    public void digBlock(BlockCoordinates coordinates) { getChunk(coordinates).digBlock(coordinates); }
+    public void placeBlock(BlockCoordinates coordinates, BlockRegistry block) {
+        getChunk(coordinates).placeBlock(coordinates.getX(), coordinates.getY(), coordinates.getZ(), block);
+    }
+    public void digBlock(BlockCoordinates coordinates) {
+        getChunk(coordinates).digBlock(coordinates.getX(), coordinates.getY(), coordinates.getZ());
+    }
     // endregion
     // region WORLD GEN
     public Chunk generateChunk(ChunkCoordinates coordinates) {
@@ -103,28 +132,53 @@ public class World {
     }
     // endregion
     // region MEMORY MANAGEMENT
-    public void updateLoadedChunks(EntityCoordinates center) {
+    public void updateLoadedChunks(EntityCoordinates center, int limit) {
         var centerChunk = CoordinatesConverter.toChunk(center);
-        if (centerChunk.equals(lastCenter)) return;
+        if (centerChunk.equals(lastCenter)) {
+            if (toLoad.isEmpty()) return;
+            if (limit < 0)
+                while (true) {
+                    loadChunk(toLoad.poll());
+                    if (toLoad.isEmpty()) return;
+                }
+            for (int i = 0; i < limit; i++) {
+                loadChunk(toLoad.poll());
+                if (toLoad.isEmpty()) return;
+            }
+        }
+
         lastCenter = centerChunk;
         int renderDistance = Settings.settings.getRenderDistance();
 
         Set<ChunkCoordinates> allowedCoords = new HashSet<>();
 
-        for (int x = -renderDistance; x <= renderDistance; x++) {
+        for (int x = -renderDistance; x <= renderDistance; x++)
             for (int z = -renderDistance; z <= renderDistance; z++) {
-                var newCoords = new ChunkCoordinates(centerChunk.getX() + x, centerChunk.getZ() + z);
-                allowedCoords.add(newCoords);
-                loadChunk(newCoords);
+                var coordinates = new ChunkCoordinates(centerChunk.getX() + x, centerChunk.getZ() + z);
+                allowedCoords.add(coordinates);
+                if (!chunks.containsKey(coordinates)) toLoad.add(coordinates);
             }
-        }
+
+        toLoad.removeIf(coordinates -> !allowedCoords.contains(coordinates));
 
         chunks.entrySet().removeIf(entry -> {
             if (allowedCoords.contains(entry.getKey())) return false;
             unloadChunk(entry.getKey(), false);
             return true;
         });
+
+        if (limit < 0)
+            while (true) {
+                loadChunk(toLoad.poll());
+                if (toLoad.isEmpty()) return;
+            }
+
+        for (int i = 0; i < limit; i++) {
+            loadChunk(toLoad.poll());
+            if (toLoad.isEmpty()) return;
+        }
     }
+
     public void loadChunk(ChunkCoordinates coordinates) {
         if (chunks.containsKey(coordinates)) return;
         MFile chunkFile = new MFile(chunksSavePosition, coordinates + ".json");
@@ -147,25 +201,44 @@ public class World {
     // endregion
     // region COMMUNICATION
     public void getCommunication(SubChunkCoordinates coordinates, Communication communication) {
-        switch (communication) {
-            case REMESH_REQUEST: remeshRequest(coordinates);
-            default: break;
+        if (Objects.requireNonNull(communication) == Communication.REMESH_REQUEST) {
+            remeshRequest(coordinates);
         }
+    }
+    public BlockRegistry getBlockRegistryRequest(int x, int y, int z) {
+        Chunk chunk = null;
+        if (chunks.entrySet().stream().anyMatch(chunkEntry ->
+                chunkEntry.getKey().getX().equals(x) &&
+                        chunkEntry.getKey().getY().equals(y) &&
+                        chunkEntry.getKey().getZ().equals(z)))
+            chunk = chunks.entrySet().stream()
+                    .filter(chunkEntry ->
+                            chunkEntry.getKey().getX().equals(x) &&
+                                    chunkEntry.getKey().getY().equals(y) &&
+                                    chunkEntry.getKey().getZ().equals(z))
+                    .findFirst()
+                    .orElse(null)
+                    .getValue();
+        if (chunk == null) return BlockRegistries.AIR;
+        return chunk.getBlock(x, y, z);
     }
     // endregion
     // region RENDERING
     private void remeshRequest(SubChunkCoordinates coordinates) {
-        if (activeTasks.contains(coordinates)) return;
+        var tasks = is1 ? activeTasks1 : activeTasks2;
+        var queue = is1 ? meshTaskQueue1 : meshTaskQueue2;
+        if (tasks.contains(coordinates)) return;
         Chunk interested = chunks.get(CoordinatesConverter.toChunk(coordinates));
         if (interested == null) return;
-        activeTasks.add(coordinates);
+        tasks.add(coordinates);
         SubChunk subChunk = interested.getSubChunk(coordinates);
-        meshTaskQueue.add(new Mix<>(coordinates, () -> {
+        queue.add(new Mix<>(coordinates, () -> {
             var vertices = SubChunkMesher.generateMesh(coordinates, subChunk.getBlocks());
-            activeTasks.remove(coordinates);
+            tasks.remove(coordinates);
             subChunk.newMesh(vertices);
             readyToUpload.add(coordinates);
         }));
+        is1 = !is1;
     }
     // endregion
     // region MAIN METHODS
@@ -173,27 +246,42 @@ public class World {
         data.getPlayer().processKeyboard(Input.keyboard, delta);
         data.getPlayer().processMouseMovement(Input.mouse, glfwWindow);
         data.getPlayer().updateMatrices();
-        updateLoadedChunks(data.getPlayer().getEntityPosition());
+
+        if (Input.keyboard.isControlDown() &&
+            Input.keyboard.isKeyPressed(KeyboardKeys.K) &&
+            Main.craftmine.debug) data.getPlayer().frustumFreeze = !data.getPlayer().frustumFreeze;
+
+        updateLoadedChunks(data.getPlayer().getEntityPosition(), 10);
         chunks.forEach((_, chunk) -> chunk.update(delta));
-        for (int i = 0; i < 5; i++) {
-            SubChunkCoordinates coordinates = readyToUpload.poll();
-            if (coordinates == null) continue;
-            getChunk(coordinates).upload(coordinates);
+        for (int i = 0; i < 2; i++) {
+            SubChunkCoordinates coords = readyToUpload.poll();
+            if (coords == null) break;
+            Chunk chunk = chunks.get(CoordinatesConverter.toChunk(coords));
+            if (chunk != null) chunk.upload(coords);
         }
     }
 
     public void render() {
+        if (!data.getPlayer().frustumFreeze) data.getPlayer().updateFrustum();
         shader.bind();
         Consts.texture.bind();
         data.getPlayer().uploadUniforms(shader);
         shader.uploadUniform(new IntUniform("blockTexture", shader.getShaderID(), 0));
-        chunks.forEach((_, chunk) -> chunk.render());
+        chunks.forEach((_, chunk) -> chunk.render(data.getPlayer()));
         Consts.texture.unbind();
     }
 
     public void delete() {
         running = false;
-        meshWorkerThread.interrupt();
+
+        meshWorkerThread1.interrupt();
+        meshTaskQueue1.clear();
+        activeTasks1.clear();
+
+        meshWorkerThread2.interrupt();
+        meshTaskQueue2.clear();
+        activeTasks2.clear();
+
         chunks.forEach((coordinates, chunk) -> {
             unloadChunk(coordinates, false);
             chunk.delete();
@@ -207,7 +295,7 @@ public class World {
     // region HELPERS
     public Chunk getChunk(Coordinates coordinates) {
         ChunkCoordinates chunkCoordinates = CoordinatesConverter.toChunk(coordinates);
-        if (chunks.entrySet().stream().anyMatch(chunkEntry -> chunkEntry.getKey().equals(chunkCoordinates)))
+        if (chunks.containsKey(chunkCoordinates))
             return chunks.entrySet().stream()
                     .filter(chunkEntry -> chunkEntry.getKey().equals(chunkCoordinates))
                     .findFirst()

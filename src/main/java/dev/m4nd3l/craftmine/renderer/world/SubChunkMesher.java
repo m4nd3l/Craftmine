@@ -22,14 +22,19 @@ public class SubChunkMesher {
 
         short[] mask = new short[Consts.SIZE * Consts.SIZE];
 
-        for (x[d] = -1; x[d] < Consts.SIZE; ) {
+        for (x[d] = -1; x[d] < Consts.SIZE;) {
             int n = 0;
             for (x[v] = 0; x[v] < Consts.SIZE; x[v]++) {
                 for (x[u] = 0; x[u] < Consts.SIZE; x[u]++) {
                     short b1 = (x[d] >= 0) ? getBlockID(x[0], x[1], x[2], blocks) : 0;
                     short b2 = (x[d] < Consts.SIZE - 1) ? getBlockID(x[0] + q[0], x[1] + q[1], x[2] + q[2], blocks) : 0;
 
-                    mask[n++] = (b1 != 0 && b2 != 0 && b1 == b2) ? 0 : (b1 != 0 ? b1 : (short)-b2);
+                    boolean b1Transparent = isTransparent(b1);
+                    boolean b2Transparent = isTransparent(b2);
+
+                    if (b1Transparent == b2Transparent) mask[n++] = 0; // Both solid or both air: hide the face
+                    else if (b2Transparent) mask[n++] = b1;            // b1 is solid, b2 is air: draw b1's front face
+                    else mask[n++] = (short)-b2;                       // b2 is solid, b1 is air: draw b2's back face
                 }
             }
 
@@ -72,11 +77,13 @@ public class SubChunkMesher {
 
     private static void addGreedyQuad(int[] x, int[] du, int[] dv, short blockID, int axis, int width, int height,
                                       SubChunkCoordinates coordinates, FloatArrayList vertices) {
-        final boolean isBackFace = blockID < 0;
-        final BlockRegistry block = BlockRegistries.getBlock((short) Math.abs(blockID));
-        final var worldOffset = CoordinatesConverter.toBlock(coordinates);
+        boolean isBackFace = blockID < 0;
+        BlockRegistry block = BlockRegistries.getBlock((short) Math.abs(blockID));
+        var worldOffset = CoordinatesConverter.toBlock(coordinates);
 
-        float x0 = x[0] + worldOffset.getX(), y0 = x[1] + worldOffset.getY(), z0 = x[2] + worldOffset.getZ();
+        float x0 = x[0] + worldOffset.getX(),
+              y0 = x[1] + worldOffset.getY(),
+              z0 = x[2] + worldOffset.getZ();
 
         // 1. Setup Normals
         float nx = (axis == 0) ? (isBackFace ? -1 : 1) : 0;
@@ -132,12 +139,12 @@ public class SubChunkMesher {
             addVertex(v2[0], v2[1], v2[2], n[0], n[1], n[2], c[0], c[1], c[2], u, 0, a[0], a[1], a[2], a[3], vertices);
         }
     }
+
     private static float[] getUVs(int id) {
         float uMin = (id % (int) Consts.atlasWidthTiles) * Consts.stepU;
         float vMin = (id / (int) Consts.atlasWidthTiles) * Consts.stepV;
         return new float[]{uMin, vMin, uMin + Consts.stepU, vMin + Consts.stepV};
     }
-
 
     private static void addVertex(float px, float py, float pz, float nx, float ny, float nz,
                            float r, float g, float b, float u, float v,
@@ -149,6 +156,16 @@ public class SubChunkMesher {
         vertices.add(uMin); vertices.add(vMin);
         vertices.add(uMax); vertices.add(vMax);
     }
-    private static short getBlockID(int x, int y, int z, short[] blocks) { return blocks[x + Consts.SIZE * (y + Consts.SIZE * z)]; }
+
+    private static boolean isTransparent(short blockID) {
+        if (blockID == 0) return true;
+        // LOGIC FOR GRASS, TALL GRASS, etc...
+        return false;
+    }
+
+    private static short getBlockID(int x, int y, int z, short[] blocks) {
+        if (x < 0 || x >= Consts.SIZE || y < 0 || y >= Consts.SIZE || z < 0 || z >= Consts.SIZE) return 0;
+        return blocks[x + Consts.SIZE * (y + Consts.SIZE * z)];
+    }
     private static BlockRegistry getBlock(int x, int y, int z, short[] blocks) { return BlockRegistries.getBlock(getBlockID(x, y, z, blocks)); }
 }

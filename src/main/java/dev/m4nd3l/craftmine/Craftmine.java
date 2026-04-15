@@ -9,7 +9,8 @@ import static org.lwjgl.opengl.GL11.*;
 public class Craftmine {
     private World currentWorld;
     private long glfwWindow;
-    private boolean wireframeMode, debug;
+    private boolean wireframeMode;
+    public boolean debug;
 
     public Craftmine(boolean debug) {
         currentWorld = null;

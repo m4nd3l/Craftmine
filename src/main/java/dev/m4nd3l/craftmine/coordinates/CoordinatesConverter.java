@@ -1,7 +1,5 @@
 package dev.m4nd3l.craftmine.coordinates;
 
-import org.joml.Vector3f;
-
 import java.util.function.Function;
 
 public class CoordinatesConverter {
@@ -18,8 +16,8 @@ public class CoordinatesConverter {
 
     public static ChunkCoordinates toChunk(Coordinates<?> source) {
         if (source instanceof ChunkCoordinates c) return c;
-        if (source instanceof BlockCoordinates b) return transform(b, i -> i >> 4, (x, y, z) -> new ChunkCoordinates(x, z));
-        if (source instanceof EntityCoordinates e) return transform(e, f -> (int) Math.floor(f) >> 4, (x, y, z) -> new ChunkCoordinates(x, z));
+        if (source instanceof BlockCoordinates b) return transform(b, i -> i >> 4, (x, _, z) -> new ChunkCoordinates(x, z));
+        if (source instanceof EntityCoordinates e) return transform(e, f -> (int) Math.floor(f) >> 4, (x, _, z) -> new ChunkCoordinates(x, z));
         if (source instanceof SubChunkCoordinates e) return new ChunkCoordinates(e.getX(), e.getZ());
 
         return handleUnsupported(source, "ChunkCoordinates");

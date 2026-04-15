@@ -1,16 +1,20 @@
 package dev.m4nd3l.craftmine.world.gen;
 
 import dev.m4nd3l.craftmine.registries.BlockRegistries;
+import dev.m4nd3l.craftmine.world.gen.biomes.Biome;
 import dev.m4nd3l.craftmine.world.gen.noise.*;
 
 public class TerrainGenerator {
     private String seed;
     private int intSeed;
     private FastNoiseLite noise;
+    private BiomeProvider biomeProvider;
 
     public TerrainGenerator(String seed) {
         this.seed = seed;
         this.intSeed = seed.hashCode();
+
+        biomeProvider = new BiomeProvider(intSeed);
 
         noise = new FastNoiseLite(intSeed);
         noise.setNoiseType(NoiseType.OpenSimplex2);
@@ -22,18 +26,28 @@ public class TerrainGenerator {
         noise.setFractalGain(0.4f);
     }
 
-    public int getHeight(int x, int z) {
-        float n = noise.getNoise((float) x, 0.0f, (float) z);
-        float normalized = (n + 1) / 2f;
-        float smooth = (float) Math.pow(normalized, 1.5);
+    public float getDensity(int x, int y, int z) {
+        float n = noise.getNoise((float) x, (float) y, (float) z);
+        float heightGradient = (y - 64) / 40.0f;
 
-        return (int) (smooth * 40) + 63;
+        return n - heightGradient;
     }
 
-    public short getBlockAt(int x, int y, int z, int height) {
-        if (y > height) return 0;
-        if (y == height) return BlockRegistries.GRASS.getIdShort();
-        if (y > height - 4) return BlockRegistries.DIRT.getIdShort();
+    public int getApproxAltitude(int x, int z) {
+        for (int y = 255; y > 0; y--) {
+            if (getDensity(x, y, z) > 0) return y;
+        }
+        return 64;
+    }
+
+    public Biome getBiome(int x, int y, int z) { return biomeProvider.getBiome(x, y, z); }
+
+    public short determineBlock(int depth, Biome biome) {
+        if (depth == 0) return biome.getSurfaceBlock();
+        if (depth < 4) return biome.getUnderSurfaceBlock();
         return BlockRegistries.STONE.getIdShort();
     }
+
+    public String getSeed() { return seed; }
+    public int getIntSeed() { return intSeed; }
 }
