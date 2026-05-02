@@ -5,9 +5,7 @@ import static org.lwjgl.opengl.GL30.*;
 public class VAO {
     private int vaoID;
 
-    public VAO() {
-        vaoID = glGenVertexArrays();
-    }
+    public VAO() { vaoID = glGenVertexArrays(); }
 
     public void linkAttributes(VBO vbo, int layout, int nComponents, int type, boolean normalized, int size, long pointer) {
         bind();

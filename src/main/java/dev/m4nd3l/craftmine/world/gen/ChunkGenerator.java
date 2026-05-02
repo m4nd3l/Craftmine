@@ -3,6 +3,7 @@ package dev.m4nd3l.craftmine.world.gen;
 import dev.m4nd3l.craftmine.coordinates.ChunkCoordinates;
 import dev.m4nd3l.craftmine.registries.BlockRegistries;
 import dev.m4nd3l.craftmine.world.Chunk;
+import dev.m4nd3l.craftmine.world.SubChunk;
 import dev.m4nd3l.craftmine.world.gen.biomes.Biome;
 
 public class ChunkGenerator {
@@ -34,11 +35,11 @@ public class ChunkGenerator {
 
                     chunk.placeBlock(
                             worldX + x, y, worldZ + z,
-                            BlockRegistries.getBlock(blockID)
+                            BlockRegistries.getBlock(blockID),
+                            false
                     );
                     depth++;
                 }
             }
-
     }
 }

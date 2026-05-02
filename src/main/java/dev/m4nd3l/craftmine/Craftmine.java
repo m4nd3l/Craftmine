@@ -1,6 +1,7 @@
 package dev.m4nd3l.craftmine;
 
 import dev.m4nd3l.craftmine.global.Input;
+import dev.m4nd3l.craftmine.global.Settings;
 import dev.m4nd3l.craftmine.renderer.input.*;
 import dev.m4nd3l.craftmine.world.World;
 
@@ -8,7 +9,6 @@ import static org.lwjgl.opengl.GL11.*;
 
 public class Craftmine {
     private World currentWorld;
-    private long glfwWindow;
     private boolean wireframeMode;
     public boolean debug;
 
@@ -23,8 +23,8 @@ public class Craftmine {
     public World getCurrentWorld() { return currentWorld; }
 
     public void load(long glfwWindow) {
-        this.glfwWindow = glfwWindow;
         Input.initialize(glfwWindow);
+        glLineWidth(Settings.settings.getHitboxesLinesWidth());
 
         // TODO START MENU
         currentWorld = new World(

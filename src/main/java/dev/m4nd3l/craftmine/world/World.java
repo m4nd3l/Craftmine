@@ -2,6 +2,7 @@ package dev.m4nd3l.craftmine.world;
 
 import dev.m4nd3l.craftmine.Main;
 import dev.m4nd3l.craftmine.coordinates.*;
+import dev.m4nd3l.craftmine.entities.Hitbox;
 import dev.m4nd3l.craftmine.global.Consts;
 import dev.m4nd3l.craftmine.global.Input;
 import dev.m4nd3l.craftmine.global.Settings;
@@ -15,8 +16,10 @@ import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.IntUniform;
 import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.json.WorldData;
+import dev.m4nd3l.craftmine.renderer.world.HitboxRenderer;
 import dev.m4nd3l.craftmine.renderer.world.SubChunkMesher;
 import dev.m4nd3l.craftmine.world.communication.Communication;
+import dev.m4nd3l.craftmine.world.communication.WorldCommunication;
 import dev.m4nd3l.craftmine.world.gen.ChunkGenerator;
 import org.joml.Vector3f;
 
@@ -33,7 +36,10 @@ public class World {
     private Map<ChunkCoordinates, Chunk> chunks;
     private ChunkCoordinates lastCenter;
 
+    private HitboxRenderer hitboxRenderer;
+
     private Queue<ChunkCoordinates> toLoad;
+    private Queue<Chunk> chunkQueue;
 
     private MFile worldSavePosition;
     private MFile dataSavePosition;
@@ -72,6 +78,15 @@ public class World {
         chunkGenerator = new ChunkGenerator(seed);
 
         toLoad = new ConcurrentLinkedQueue<>();
+        chunkQueue = new ConcurrentLinkedQueue<>();
+
+        hitboxRenderer = new HitboxRenderer(data.getPlayer());
+        hitboxRenderer.add(new Hitbox(
+                new EntityCoordinates(0f, 100f, 0f), new EntityCoordinates(3f, 100f, 0f),
+                new EntityCoordinates(3f, 100f, 3f), new EntityCoordinates(0f, 100f, 3f),
+                new EntityCoordinates(0f, 103f, 0f), new EntityCoordinates(3f, 103f, 0f),
+                new EntityCoordinates(3f, 103f, 3f), new EntityCoordinates(0f, 103f, 3f)
+        ));
 
         meshingThreads = new MultiThread<>(8);
         loadingChunkThreads = new MultiThread<>(5);
@@ -101,7 +116,6 @@ public class World {
     public void updateLoadedChunks(EntityCoordinates center, int limit) {
         var centerChunk = CoordinatesConverter.toChunk(center);
 
-        // Se il giocatore non si è spostato di un intero chunk, continuiamo a svuotare la coda esistente
         if (centerChunk.equals(lastCenter)) {
             loadLimitedChunks(limit);
             return;
@@ -112,35 +126,26 @@ public class World {
         Set<ChunkCoordinates> allowedCoords = new HashSet<>();
         List<ChunkCoordinates> newSpiralList = new ArrayList<>();
 
-        // 1. Definiamo l'area circondariale
         for (int x = -renderDistance; x <= renderDistance; x++) {
             for (int z = -renderDistance; z <= renderDistance; z++) {
                 var coordinates = new ChunkCoordinates(centerChunk.getX() + x, centerChunk.getZ() + z);
                 allowedCoords.add(coordinates);
-
-                // Aggiungiamo alla lista solo se il chunk non è già in memoria
-                if (!chunks.containsKey(coordinates)) {
-                    newSpiralList.add(coordinates);
-                }
+                if (!chunks.containsKey(coordinates)) newSpiralList.add(coordinates);
             }
         }
 
-        // 2. Ordinamento Radiale (Espansione dal centro)
         newSpiralList.sort(Comparator.comparingInt(c -> {
             int dx = c.getX() - centerChunk.getX();
             int dz = c.getZ() - centerChunk.getZ();
-            return (dx * dx + dz * dz); // Distanza quadratica per massima velocità CPU
+            return (dx * dx + dz * dz);
         }));
 
-        // 3. Reset Strategico della Coda
-        // Cancelliamo la vecchia coda per evitare che i thread carichino chunk lontani
         toLoad.clear();
         toLoad.addAll(newSpiralList);
 
-        // 4. Rimozione dei chunk fuori distanza[cite: 13]
         chunks.entrySet().removeIf(entry -> {
             if (allowedCoords.contains(entry.getKey())) return false;
-            unloadChunk(entry.getKey(), false); // Salvataggio asincrono[cite: 12, 13]
+            unloadChunk(entry.getKey(), false);
             return true;
         });
 
@@ -155,19 +160,17 @@ public class World {
             loadingChunkThreads.addToQueue(coordinates, () -> {
                 String json = chunkFile.readString();
                 if (json == null || json.isEmpty()) return;
-
                 Chunk chunk = Consts.gson.fromJson(json, Chunk.class);
-                if (chunk != null) {
-                    chunk.loadAfterInit();
-                    chunks.put(coordinates, chunk);
-                }
+                if (chunk == null) chunk = generateChunk(coordinates);
+                chunks.put(coordinates, chunk);
+                chunkQueue.add(chunk);
             });
         } else {
             loadingChunkThreads.addToQueue(coordinates, () -> {
                 Chunk chunk = generateChunk(coordinates);
-                if (chunk != null) {
-                    chunks.put(coordinates, chunk);
-                }
+                if (chunk == null) return;
+                chunks.put(coordinates, chunk);
+                chunkQueue.add(chunk);
             });
         }
     }
@@ -183,8 +186,9 @@ public class World {
     // endregion
     // region COMMUNICATION
     public void getCommunication(SubChunkCoordinates coordinates, Communication communication) {
-        if (Objects.requireNonNull(communication) == Communication.REMESH_REQUEST) {
-            remeshRequest(coordinates);
+        switch (communication) {
+            case REMESH_REQUEST -> remeshRequest(coordinates);
+            case INITIALIZE_SUBCHUNK -> initalizeSubchunkRequest(coordinates);
         }
     }
 
@@ -205,6 +209,12 @@ public class World {
         if (chunk == null) return BlockRegistries.AIR;
         return chunk.getBlock(x, y, z);
     }
+
+    private void initalizeSubchunkRequest(SubChunkCoordinates coordinates) {
+        getChunk(coordinates).getSubChunk(coordinates).postLoadInit();
+        WorldCommunication.markAsDone(coordinates, Communication.INITIALIZE_SUBCHUNK);
+    }
+
     // endregion
     // region RENDERING
     private void remeshRequest(SubChunkCoordinates coordinates) {
@@ -212,6 +222,7 @@ public class World {
         if (interested == null) return;
         SubChunk subChunk = interested.getSubChunk(coordinates);
         meshingThreads.addToQueue(coordinates, () -> subChunk.newMesh(SubChunkMesher.generateMesh(coordinates, subChunk.getBlocks())));
+        WorldCommunication.markAsDone(coordinates, Communication.REMESH_REQUEST);
     }
     // endregion
     // region MAIN METHODS
@@ -223,6 +234,15 @@ public class World {
         if (Input.keyboard.isControlDown() &&
             Input.keyboard.isKeyPressed(KeyboardKeys.K) &&
             Main.craftmine.debug) data.getPlayer().frustumFreeze = !data.getPlayer().frustumFreeze;
+
+        if (Input.keyboard.isControlDown() &&
+            Input.keyboard.isKeyPressed(KeyboardKeys.H)) hitboxRenderer.swap();
+
+        for (int i = 0; i < 15; i++) {
+            Chunk polled = chunkQueue.poll();
+            if (polled == null) continue;
+            polled.loadAfterInit();
+        }
 
         updateLoadedChunks(data.getPlayer().getEntityPosition(), 10);
         chunks.forEach((_, chunk) -> chunk.update(delta));
@@ -247,10 +267,14 @@ public class World {
         shader.uploadUniform(new IntUniform("blockTexture", shader.getShaderID(), 0));
         chunks.forEach((_, chunk) -> chunk.render(data.getPlayer()));
         Consts.texture.unbind();
+        shader.unbind();
+        hitboxRenderer.render();
     }
 
     public void delete() {
         meshingThreads.delete();
+        loadingChunkThreads.delete();
+        unloadingChunkThreads.delete();
 
         chunks.forEach((coordinates, chunk) -> {
             unloadChunk(coordinates, false);

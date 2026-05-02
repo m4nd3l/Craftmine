@@ -34,6 +34,11 @@ public class Coordinates<T> {
     }
 
     @Override
+    public String toString() {
+        return "COORDINATES: " + x + "; " + y + "; " + z;
+    }
+
+    @Override
     public boolean equals(Object obj) {
         if (obj instanceof Coordinates c) return getX().equals(c.getX()) && getY().equals(c.getY()) && getZ().equals(c.getZ());
         return false;

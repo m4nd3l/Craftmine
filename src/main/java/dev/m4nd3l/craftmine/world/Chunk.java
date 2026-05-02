@@ -1,15 +1,18 @@
 package dev.m4nd3l.craftmine.world;
 
 import dev.m4nd3l.craftmine.coordinates.*;
-import dev.m4nd3l.craftmine.global.Consts;
 import dev.m4nd3l.craftmine.registries.BlockRegistries;
 import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Spliterator;
+import java.util.function.Consumer;
 
-public class Chunk {
+public class Chunk implements Iterable<SubChunk> {
     private List<SubChunk> subChunks;
     private ChunkCoordinates coordinates;
 
@@ -29,8 +32,10 @@ public class Chunk {
     }
 
     // region INTERACTION
-    public void placeBlock(int x, int y, int z, BlockRegistry block) {
-        getSubChunk(x, y, z).placeBlock(x & 15, y & 15, z & 15, block);
+    public void placeBlock(int x, int y, int z, BlockRegistry block) { placeBlock(x, y, z, block, true); }
+
+    public void placeBlock(int x, int y, int z, BlockRegistry block, boolean setDirty) {
+        getSubChunk(x, y, z).placeBlock(x & 15, y & 15, z & 15, block, setDirty);
     }
 
     public void digBlock(int x, int y, int z) {
@@ -80,5 +85,13 @@ public class Chunk {
         if (subChunk == null) return BlockRegistries.AIR;
         return subChunk.getBlock(x & 15, y & 15, z & 15);
     }
+
+    @NotNull
+    @Override
+    public Iterator<SubChunk> iterator() { return subChunks.iterator(); }
+    @Override
+    public void forEach(Consumer<? super SubChunk> action) { subChunks.forEach(action); }
+    @Override
+    public Spliterator<SubChunk> spliterator() { return subChunks.spliterator(); }
     // endregion
 }

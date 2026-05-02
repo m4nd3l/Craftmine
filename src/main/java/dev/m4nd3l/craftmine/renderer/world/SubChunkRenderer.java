@@ -1,5 +1,6 @@
 package dev.m4nd3l.craftmine.renderer.world;
 
+import dev.m4nd3l.craftmine.renderer.Renderer;
 import dev.m4nd3l.craftmine.renderer.opengl.VAO;
 import dev.m4nd3l.craftmine.renderer.opengl.VBO;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
@@ -9,18 +10,13 @@ import java.nio.FloatBuffer;
 
 import static org.lwjgl.opengl.GL11.*;
 
-public class SubChunkRenderer {
+public class SubChunkRenderer extends Renderer {
     private static FloatBuffer uploadBuffer;
-
-    private transient VAO vao;
-    private transient VBO vbo;
-    private transient FloatArrayList vertices;
-    private transient int verticesCount;
-
     private transient boolean isDirty;
 
     public SubChunkRenderer initialize() { this.vertices = new FloatArrayList(); dirty(); return this; }
 
+    @Override
     public void uploadToGPU() {
         if (vertices == null || vertices.isEmpty()) return;
 
@@ -40,7 +36,7 @@ public class SubChunkRenderer {
         if (vbo == null) vbo = new VBO();
         vbo.uploadData(uploadBuffer);
 
-        int stride = 15 * 4;
+        int stride = 15 * Float.BYTES;
         vao.linkAttributes(vbo, 0, 3, GL_FLOAT, false, stride, 0);  // Position
         vao.linkAttributes(vbo, 1, 3, GL_FLOAT, false, stride, 12); // Normal
         vao.linkAttributes(vbo, 2, 3, GL_FLOAT, false, stride, 24); // Color
@@ -54,6 +50,7 @@ public class SubChunkRenderer {
 
     public void setVertices(FloatArrayList vertices) { this.vertices = vertices; }
 
+    @Override
     public void render() { if (verticesCount == 0) return; vao.bind(); glDrawArrays(GL_TRIANGLES, 0, verticesCount); vao.unbind(); }
     public void delete() { if (vao != null) vao.delete(); if (vbo != null) vbo.delete(); }
 

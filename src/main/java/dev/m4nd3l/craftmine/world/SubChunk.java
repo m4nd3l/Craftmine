@@ -15,8 +15,7 @@ public class SubChunk {
     @SerializedName("block_ids")
     private short[] blocks;
 
-    @SerializedName("renderer")
-    private SubChunkRenderer renderer;
+    private transient SubChunkRenderer renderer;
 
     @SerializedName("coordinates")
     private SubChunkCoordinates coordinates;
@@ -25,12 +24,10 @@ public class SubChunk {
 
     public SubChunk(SubChunkCoordinates coordinates) {
         blocks = new short[Consts.SIZE * Consts.SIZE * Consts.SIZE];
-        renderer = new SubChunkRenderer().initialize();
         this.coordinates = coordinates;
-        renderer.dirty();
     }
 
-    public SubChunk() { }
+    public SubChunk() {}
 
     public void postLoadInit() {
         if (renderer == null) renderer = new SubChunkRenderer();
@@ -40,18 +37,26 @@ public class SubChunk {
     }
 
     public void update(float delta) {
-        if (renderer.isDirty() && isSeen) {
+        if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
+        if (renderer != null && renderer.isDirty() && isSeen) {
             WorldCommunication.tellWorld(coordinates, Communication.REMESH_REQUEST);
             renderer.undirty();
         }
     }
-    public void render(Camera camera) { if (isSeen(camera)) renderer.render(); }
+    public void render(Camera camera) {
+        if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
+        if (isSeen(camera) && renderer != null) renderer.render();
+    }
     public void delete() { renderer.delete(); }
 
-    public void placeBlock(int x, int y, int z, BlockRegistry block) {
-        renderer.dirty();
+    public void placeBlock(int x, int y, int z, BlockRegistry block) { placeBlock(x, y, z, block, true); }
+
+    public void placeBlock(int x, int y, int z, BlockRegistry block, boolean setDirty) {
+        if (setDirty) renderer.dirty();
         blocks[getIndex(x, y, z)] = (short) block.getId();
     }
+
+    public void setDirty() { renderer.dirty(); }
 
     public void digBlock(int x, int y, int z) {
         renderer.dirty();
@@ -59,7 +64,10 @@ public class SubChunk {
     }
 
     public void newMesh(FloatArrayList vertices) { renderer.setVertices(vertices); }
-    public void uploadToGPU() { renderer.uploadToGPU(); }
+    public void uploadToGPU() {
+        if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
+        if (renderer != null) renderer.uploadToGPU();
+    }
 
     private short getBlockID(int x, int y, int z) { return blocks[x + Consts.SIZE * (y + Consts.SIZE * z)]; }
     public BlockRegistry getBlock(int x, int y, int z) { return BlockRegistries.getBlock(getBlockID(x, y, z)); }
