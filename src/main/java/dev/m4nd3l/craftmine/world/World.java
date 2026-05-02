@@ -1,11 +1,11 @@
 package dev.m4nd3l.craftmine.world;
 
-import com.sun.jdi.event.StepEvent;
 import dev.m4nd3l.craftmine.Main;
 import dev.m4nd3l.craftmine.coordinates.*;
 import dev.m4nd3l.craftmine.global.Consts;
 import dev.m4nd3l.craftmine.global.Input;
 import dev.m4nd3l.craftmine.global.Settings;
+import dev.m4nd3l.craftmine.multithreading.MultiThread;
 import dev.m4nd3l.craftmine.registries.BlockRegistries;
 import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
@@ -16,18 +16,14 @@ import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.json.WorldData;
 import dev.m4nd3l.craftmine.renderer.world.SubChunkMesher;
-import dev.m4nd3l.craftmine.util.Mix;
 import dev.m4nd3l.craftmine.world.communication.Communication;
 import dev.m4nd3l.craftmine.world.gen.ChunkGenerator;
-import dev.m4nd3l.craftmine.world.gen.TerrainGenerator;
 import org.joml.Vector3f;
 
 import java.nio.file.Files;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 
 public class World {
     private long glfwWindow;
@@ -45,14 +41,9 @@ public class World {
 
     private ChunkGenerator chunkGenerator;
 
-    private BlockingQueue<Mix<SubChunkCoordinates, Runnable>> meshTaskQueue1;
-    private BlockingQueue<Mix<SubChunkCoordinates, Runnable>> meshTaskQueue2;
-    private Queue<SubChunkCoordinates> readyToUpload;
-    private Set<SubChunkCoordinates> activeTasks1;
-    private Set<SubChunkCoordinates> activeTasks2;
-    private Thread meshWorkerThread1;
-    private Thread meshWorkerThread2;
-    private volatile boolean running = true, is1 = true;
+    private MultiThread<SubChunkCoordinates> meshingThreads;
+    private MultiThread<ChunkCoordinates> loadingChunkThreads;
+    private MultiThread<ChunkCoordinates> unloadingChunkThreads;
 
     public World(long glfwWindow, String name, String seed) {
         this.glfwWindow = glfwWindow;
@@ -76,40 +67,15 @@ public class World {
                         new Vector3f(0.0f, 0f, 0f)))
                 .setWorldName(name)
                 .setWorldSeed(seed);
-        if (chunks == null) chunks = new HashMap<>();
+        if (chunks == null) chunks = new ConcurrentHashMap<>();
 
         chunkGenerator = new ChunkGenerator(seed);
 
         toLoad = new ConcurrentLinkedQueue<>();
 
-        this.readyToUpload = new ConcurrentLinkedQueue<>();
-        this.meshTaskQueue1 = new LinkedBlockingQueue<>();
-        this.meshTaskQueue2 = new LinkedBlockingQueue<>();
-        this.activeTasks1 = ConcurrentHashMap.newKeySet();
-        this.activeTasks2 = ConcurrentHashMap.newKeySet();
-        this.meshWorkerThread1 = new Thread(() -> {
-            while (running) {
-                try {
-                    var mix = meshTaskQueue1.take();
-                    var task = mix.getV2();
-                    if (task == null) continue;
-                    task.run();
-                } catch (InterruptedException e) { break; }
-            }
-        }, "Mesh-Worker1");
-        this.meshWorkerThread1.start();
-
-        this.meshWorkerThread2 = new Thread(() -> {
-            while (running) {
-                try {
-                    var mix = meshTaskQueue2.take();
-                    var task = mix.getV2();
-                    if (task == null) continue;
-                    task.run();
-                } catch (InterruptedException e) { break; }
-            }
-        }, "Mesh-Worker2");
-        this.meshWorkerThread2.start();
+        meshingThreads = new MultiThread<>(8);
+        loadingChunkThreads = new MultiThread<>(5);
+        unloadingChunkThreads = new MultiThread<>(5);
 
         updateLoadedChunks(data.getPlayer().getEntityPosition(), -1);
     }
@@ -134,67 +100,83 @@ public class World {
     // region MEMORY MANAGEMENT
     public void updateLoadedChunks(EntityCoordinates center, int limit) {
         var centerChunk = CoordinatesConverter.toChunk(center);
+
+        // Se il giocatore non si è spostato di un intero chunk, continuiamo a svuotare la coda esistente
         if (centerChunk.equals(lastCenter)) {
-            if (toLoad.isEmpty()) return;
-            if (limit < 0)
-                while (true) {
-                    loadChunk(toLoad.poll());
-                    if (toLoad.isEmpty()) return;
-                }
-            for (int i = 0; i < limit; i++) {
-                loadChunk(toLoad.poll());
-                if (toLoad.isEmpty()) return;
-            }
+            loadLimitedChunks(limit);
+            return;
         }
 
         lastCenter = centerChunk;
         int renderDistance = Settings.settings.getRenderDistance();
-
         Set<ChunkCoordinates> allowedCoords = new HashSet<>();
+        List<ChunkCoordinates> newSpiralList = new ArrayList<>();
 
-        for (int x = -renderDistance; x <= renderDistance; x++)
+        // 1. Definiamo l'area circondariale
+        for (int x = -renderDistance; x <= renderDistance; x++) {
             for (int z = -renderDistance; z <= renderDistance; z++) {
                 var coordinates = new ChunkCoordinates(centerChunk.getX() + x, centerChunk.getZ() + z);
                 allowedCoords.add(coordinates);
-                if (!chunks.containsKey(coordinates)) toLoad.add(coordinates);
+
+                // Aggiungiamo alla lista solo se il chunk non è già in memoria
+                if (!chunks.containsKey(coordinates)) {
+                    newSpiralList.add(coordinates);
+                }
             }
+        }
 
-        toLoad.removeIf(coordinates -> !allowedCoords.contains(coordinates));
+        // 2. Ordinamento Radiale (Espansione dal centro)
+        newSpiralList.sort(Comparator.comparingInt(c -> {
+            int dx = c.getX() - centerChunk.getX();
+            int dz = c.getZ() - centerChunk.getZ();
+            return (dx * dx + dz * dz); // Distanza quadratica per massima velocità CPU
+        }));
 
+        // 3. Reset Strategico della Coda
+        // Cancelliamo la vecchia coda per evitare che i thread carichino chunk lontani
+        toLoad.clear();
+        toLoad.addAll(newSpiralList);
+
+        // 4. Rimozione dei chunk fuori distanza[cite: 13]
         chunks.entrySet().removeIf(entry -> {
             if (allowedCoords.contains(entry.getKey())) return false;
-            unloadChunk(entry.getKey(), false);
+            unloadChunk(entry.getKey(), false); // Salvataggio asincrono[cite: 12, 13]
             return true;
         });
 
-        if (limit < 0)
-            while (true) {
-                loadChunk(toLoad.poll());
-                if (toLoad.isEmpty()) return;
-            }
-
-        for (int i = 0; i < limit; i++) {
-            loadChunk(toLoad.poll());
-            if (toLoad.isEmpty()) return;
-        }
+        loadLimitedChunks(limit);
     }
 
     public void loadChunk(ChunkCoordinates coordinates) {
-        if (chunks.containsKey(coordinates)) return;
+        if (coordinates == null || chunks.containsKey(coordinates)) return;
+
         MFile chunkFile = new MFile(chunksSavePosition, coordinates + ".json");
-        Chunk chunk;
         if (chunkFile.exists()) {
-            chunk = Consts.gson.fromJson(chunkFile.readString(), Chunk.class);
-            chunk.loadAfterInit();
-        } else chunk = generateChunk(coordinates);
-        chunks.put(coordinates, chunk);
+            loadingChunkThreads.addToQueue(coordinates, () -> {
+                String json = chunkFile.readString();
+                if (json == null || json.isEmpty()) return;
+
+                Chunk chunk = Consts.gson.fromJson(json, Chunk.class);
+                if (chunk != null) {
+                    chunk.loadAfterInit();
+                    chunks.put(coordinates, chunk);
+                }
+            });
+        } else {
+            loadingChunkThreads.addToQueue(coordinates, () -> {
+                Chunk chunk = generateChunk(coordinates);
+                if (chunk != null) {
+                    chunks.put(coordinates, chunk);
+                }
+            });
+        }
     }
+
     public void unloadChunk(ChunkCoordinates coordinates, boolean removeFromMap) {
         if (!chunks.containsKey(coordinates)) return;
         MFile chunkFile = new MFile(chunksSavePosition, coordinates + ".json");
-        String content = Consts.gson.toJson(chunks.get(coordinates));
-        if (chunkFile.exists()) chunkFile.writeString(content, false);
-        else chunkFile.create(content);
+        if (chunkFile.exists()) unloadingChunkThreads.addToQueue(coordinates, () -> chunkFile.writeString(Consts.gson.toJson(chunks.get(coordinates)), false));
+        else unloadingChunkThreads.addToQueue(coordinates, () -> chunkFile.create(Consts.gson.toJson(chunks.get(coordinates))));
         chunks.get(coordinates).delete();
         if (removeFromMap) chunks.remove(coordinates);
     }
@@ -205,6 +187,7 @@ public class World {
             remeshRequest(coordinates);
         }
     }
+
     public BlockRegistry getBlockRegistryRequest(int x, int y, int z) {
         Chunk chunk = null;
         if (chunks.entrySet().stream().anyMatch(chunkEntry ->
@@ -225,20 +208,10 @@ public class World {
     // endregion
     // region RENDERING
     private void remeshRequest(SubChunkCoordinates coordinates) {
-        var tasks = is1 ? activeTasks1 : activeTasks2;
-        var queue = is1 ? meshTaskQueue1 : meshTaskQueue2;
-        if (tasks.contains(coordinates)) return;
         Chunk interested = chunks.get(CoordinatesConverter.toChunk(coordinates));
         if (interested == null) return;
-        tasks.add(coordinates);
         SubChunk subChunk = interested.getSubChunk(coordinates);
-        queue.add(new Mix<>(coordinates, () -> {
-            var vertices = SubChunkMesher.generateMesh(coordinates, subChunk.getBlocks());
-            tasks.remove(coordinates);
-            subChunk.newMesh(vertices);
-            readyToUpload.add(coordinates);
-        }));
-        is1 = !is1;
+        meshingThreads.addToQueue(coordinates, () -> subChunk.newMesh(SubChunkMesher.generateMesh(coordinates, subChunk.getBlocks())));
     }
     // endregion
     // region MAIN METHODS
@@ -253,8 +226,13 @@ public class World {
 
         updateLoadedChunks(data.getPlayer().getEntityPosition(), 10);
         chunks.forEach((_, chunk) -> chunk.update(delta));
-        for (int i = 0; i < 2; i++) {
-            SubChunkCoordinates coords = readyToUpload.poll();
+
+        meshingThreads.update();
+        loadingChunkThreads.update();
+        unloadingChunkThreads.update();
+
+        for (int i = 0; i < 10; i++) {
+            SubChunkCoordinates coords = meshingThreads.pollReady();
             if (coords == null) break;
             Chunk chunk = chunks.get(CoordinatesConverter.toChunk(coords));
             if (chunk != null) chunk.upload(coords);
@@ -272,20 +250,13 @@ public class World {
     }
 
     public void delete() {
-        running = false;
-
-        meshWorkerThread1.interrupt();
-        meshTaskQueue1.clear();
-        activeTasks1.clear();
-
-        meshWorkerThread2.interrupt();
-        meshTaskQueue2.clear();
-        activeTasks2.clear();
+        meshingThreads.delete();
 
         chunks.forEach((coordinates, chunk) -> {
             unloadChunk(coordinates, false);
             chunk.delete();
         });
+
         dataSavePosition.writeString(Consts.gson.toJson(data), false);
         shader.unbind();
         shader.delete();
@@ -293,6 +264,19 @@ public class World {
     }
     // endregion
     // region HELPERS
+    private void loadLimitedChunks(int limit) {
+        if (limit < 0)
+            while (true) {
+                loadChunk(toLoad.poll());
+                if (toLoad.isEmpty()) return;
+            }
+
+        for (int i = 0; i < limit; i++) {
+            loadChunk(toLoad.poll());
+            if (toLoad.isEmpty()) return;
+        }
+    }
+
     public Chunk getChunk(Coordinates coordinates) {
         ChunkCoordinates chunkCoordinates = CoordinatesConverter.toChunk(coordinates);
         if (chunks.containsKey(chunkCoordinates))
