@@ -1,5 +1,6 @@
 package dev.m4nd3l.craftmine.renderer;
 
+import dev.m4nd3l.craftmine.Main;
 import dev.m4nd3l.craftmine.coordinates.EntityCoordinates;
 import dev.m4nd3l.craftmine.renderer.input.Keyboard;
 import dev.m4nd3l.craftmine.renderer.input.KeyboardKeys;
@@ -81,10 +82,10 @@ public class Camera {
         else speed = 16.0f;
 
     }
-    public void processMouseMovement(Mouse mouse, long glfwWindow) {
+    public void processMouseMovement(Mouse mouse) {
         if (mouse.isButtonDown(MouseKeys.LEFT)) {
 
-            GLFW.glfwSetInputMode(glfwWindow, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+            GLFW.glfwSetInputMode(Main.glfwWindow, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
 
             double mouseX = mouse.getX();
             double mouseY = mouse.getY();
@@ -102,20 +103,16 @@ public class Camera {
 
             float angle = newOrientation.angle(upDirection);
 
-            if (Math.abs(angle - Math.toRadians(90.0f)) <= Math.toRadians(85.0f)) {
-                cameraOrientation.set(newOrientation);
-            }
+            if (Math.abs(angle - Math.toRadians(90.0f)) <= Math.toRadians(85.0f)) cameraOrientation.set(newOrientation);
 
             cameraOrientation.rotateAxis(
                     (float) Math.toRadians(-rotationY),
                     upDirection.x, upDirection.y, upDirection.z
             );
 
-            GLFW.glfwSetCursorPos(glfwWindow, width / 2.0, height / 2.0);
+            GLFW.glfwSetCursorPos(Main.glfwWindow, width / 2.0, height / 2.0);
+        } else GLFW.glfwSetInputMode(Main.glfwWindow, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
 
-        } else {
-            GLFW.glfwSetInputMode(glfwWindow, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
-        }
     }
 
     public void uploadUniforms(ShaderProgram shader) {

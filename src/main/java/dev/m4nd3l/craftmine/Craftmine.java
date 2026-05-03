@@ -3,33 +3,35 @@ package dev.m4nd3l.craftmine;
 import dev.m4nd3l.craftmine.global.Input;
 import dev.m4nd3l.craftmine.global.Settings;
 import dev.m4nd3l.craftmine.renderer.input.*;
+import dev.m4nd3l.craftmine.ui.UIManager;
 import dev.m4nd3l.craftmine.world.World;
 
+import static org.lwjgl.glfw.GLFW.glfwSetWindowSizeCallback;
 import static org.lwjgl.opengl.GL11.*;
 
 public class Craftmine {
     private World currentWorld;
+    private UIManager UIManager;
     private boolean wireframeMode;
     public boolean debug;
 
+    public Craftmine() { this(false); }
     public Craftmine(boolean debug) {
-        currentWorld = null;
-        wireframeMode = false;
+        this.UIManager = new UIManager();
+        this.currentWorld = null;
+        this.wireframeMode = false;
         this.debug = debug;
     }
-
-    public Craftmine() { this(false); }
 
     public World getCurrentWorld() { return currentWorld; }
 
     public void load(long glfwWindow) {
         Input.initialize(glfwWindow);
         glLineWidth(Settings.settings.getHitboxesLinesWidth());
+        glfwSetWindowSizeCallback(Main.glfwWindow, (windowHandle, width, height) -> UIManager.resize(width, height));
 
         // TODO START MENU
-        currentWorld = new World(
-                glfwWindow,
-                "default");
+        currentWorld = new World("default");
     }
 
     public void update(float delta) {

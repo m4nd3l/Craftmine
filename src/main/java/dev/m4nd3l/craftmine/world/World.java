@@ -2,7 +2,6 @@ package dev.m4nd3l.craftmine.world;
 
 import dev.m4nd3l.craftmine.Main;
 import dev.m4nd3l.craftmine.coordinates.*;
-import dev.m4nd3l.craftmine.entities.Hitbox;
 import dev.m4nd3l.craftmine.global.Consts;
 import dev.m4nd3l.craftmine.global.Input;
 import dev.m4nd3l.craftmine.global.Settings;
@@ -16,7 +15,7 @@ import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.IntUniform;
 import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.json.WorldData;
-import dev.m4nd3l.craftmine.renderer.world.HitboxRenderer;
+import dev.m4nd3l.craftmine.renderer.world.EntityRenderer;
 import dev.m4nd3l.craftmine.renderer.world.SubChunkMesher;
 import dev.m4nd3l.craftmine.world.communication.Communication;
 import dev.m4nd3l.craftmine.world.communication.WorldCommunication;
@@ -29,14 +28,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class World {
-    private long glfwWindow;
     private ShaderProgram shader;
 
     private WorldData data;
     private Map<ChunkCoordinates, Chunk> chunks;
     private ChunkCoordinates lastCenter;
 
-    private HitboxRenderer hitboxRenderer;
+    private EntityRenderer entityRenderer;
 
     private Queue<ChunkCoordinates> toLoad;
     private Queue<Chunk> chunkQueue;
@@ -51,8 +49,7 @@ public class World {
     private MultiThread<ChunkCoordinates> loadingChunkThreads;
     private MultiThread<ChunkCoordinates> unloadingChunkThreads;
 
-    public World(long glfwWindow, String name, String seed) {
-        this.glfwWindow = glfwWindow;
+    public World(String name, String seed) {
         this.shader = RenderingOptimization.shaders.getOrCreate(
                 new MFile("assets", "shaders", "default.vert"),
                 new MFile("assets", "shaders", "default.frag"));
@@ -80,13 +77,7 @@ public class World {
         toLoad = new ConcurrentLinkedQueue<>();
         chunkQueue = new ConcurrentLinkedQueue<>();
 
-        hitboxRenderer = new HitboxRenderer(data.getPlayer());
-        hitboxRenderer.add(new Hitbox(
-                new EntityCoordinates(0f, 100f, 0f), new EntityCoordinates(3f, 100f, 0f),
-                new EntityCoordinates(3f, 100f, 3f), new EntityCoordinates(0f, 100f, 3f),
-                new EntityCoordinates(0f, 103f, 0f), new EntityCoordinates(3f, 103f, 0f),
-                new EntityCoordinates(3f, 103f, 3f), new EntityCoordinates(0f, 103f, 3f)
-        ));
+        entityRenderer = new EntityRenderer(data.getPlayer());
 
         meshingThreads = new MultiThread<>(8);
         loadingChunkThreads = new MultiThread<>(5);
@@ -95,7 +86,7 @@ public class World {
         updateLoadedChunks(data.getPlayer().getEntityPosition(), -1);
     }
 
-    public World(long glfwWindow, String name) { this(glfwWindow, name, String.valueOf(Math.random() * 101108356L)); }
+    public World(String name) { this(name, String.valueOf(Math.random() * 101108356L)); }
 
     // region INTERACTION
     public void placeBlock(BlockCoordinates coordinates, BlockRegistry block) {
@@ -228,7 +219,7 @@ public class World {
     // region MAIN METHODS
     public void update(float delta) {
         data.getPlayer().processKeyboard(Input.keyboard, delta);
-        data.getPlayer().processMouseMovement(Input.mouse, glfwWindow);
+        data.getPlayer().processMouseMovement(Input.mouse);
         data.getPlayer().updateMatrices();
 
         if (Input.keyboard.isControlDown() &&
@@ -236,7 +227,7 @@ public class World {
             Main.craftmine.debug) data.getPlayer().frustumFreeze = !data.getPlayer().frustumFreeze;
 
         if (Input.keyboard.isControlDown() &&
-            Input.keyboard.isKeyPressed(KeyboardKeys.H)) hitboxRenderer.swap();
+            Input.keyboard.isKeyPressed(KeyboardKeys.H)) entityRenderer.swapHitboxes();
 
         for (int i = 0; i < 15; i++) {
             Chunk polled = chunkQueue.poll();
@@ -268,13 +259,15 @@ public class World {
         chunks.forEach((_, chunk) -> chunk.render(data.getPlayer()));
         Consts.texture.unbind();
         shader.unbind();
-        hitboxRenderer.render();
+        entityRenderer.render();
     }
 
     public void delete() {
         meshingThreads.delete();
         loadingChunkThreads.delete();
         unloadingChunkThreads.delete();
+
+        entityRenderer.delete();
 
         chunks.forEach((coordinates, chunk) -> {
             unloadChunk(coordinates, false);
