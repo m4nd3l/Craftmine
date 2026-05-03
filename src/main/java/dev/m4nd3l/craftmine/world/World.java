@@ -15,7 +15,7 @@ import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.IntUniform;
 import dev.m4nd3l.craftmine.renderer.optimization.RenderingOptimization;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.json.WorldData;
-import dev.m4nd3l.craftmine.renderer.world.EntityRenderer;
+import dev.m4nd3l.craftmine.renderer.renderers.EntityRenderer;
 import dev.m4nd3l.craftmine.renderer.world.SubChunkMesher;
 import dev.m4nd3l.craftmine.world.communication.Communication;
 import dev.m4nd3l.craftmine.world.communication.WorldCommunication;

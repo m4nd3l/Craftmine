@@ -1,6 +1,7 @@
 package dev.m4nd3l.craftmine.renderer.opengl;
 
 import dev.m4nd3l.craftmine.renderer.util.MFile;
+import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.ByteBuffer;
@@ -70,4 +71,13 @@ public class Texture {
 
     public int getAtlasXSize() { return width / 16; }
     public int getAtlasYSize() { return height / 16; }
+
+    public Vector4f getUVs(int xGrid, int yGrid, int spriteWidth, int spriteHeight) {
+        float uMin = (float) (xGrid * spriteWidth) / this.width;
+        float vMin = (float) (yGrid * spriteHeight) / this.height;
+        float uMax = (float) (xGrid * spriteWidth + spriteWidth) / this.width;
+        float vMax = (float) (yGrid * spriteHeight + spriteHeight) / this.height;
+
+        return new Vector4f(uMin, vMin, uMax, vMax);
+    }
 }

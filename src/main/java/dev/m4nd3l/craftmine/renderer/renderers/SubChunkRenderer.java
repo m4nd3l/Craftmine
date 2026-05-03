@@ -1,4 +1,4 @@
-package dev.m4nd3l.craftmine.renderer.world;
+package dev.m4nd3l.craftmine.renderer.renderers;
 
 import dev.m4nd3l.craftmine.renderer.Renderer;
 import dev.m4nd3l.craftmine.renderer.opengl.VAO;

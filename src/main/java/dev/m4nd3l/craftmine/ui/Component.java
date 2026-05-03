@@ -2,17 +2,19 @@ package dev.m4nd3l.craftmine.ui;
 
 import dev.m4nd3l.craftmine.global.Input;
 import dev.m4nd3l.craftmine.renderer.input.MouseKeys;
+import dev.m4nd3l.craftmine.renderer.renderers.UIRenderer;
 import dev.m4nd3l.craftmine.ui.layout.Alignment;
 import dev.m4nd3l.craftmine.ui.layout.Dimensions;
 import dev.m4nd3l.craftmine.ui.layout.Margin;
+import org.jetbrains.annotations.NotNull;
 import org.joml.Vector2f;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class Component {
-    protected List<Component> children = new ArrayList<>();
-    protected Vector2f absolutePosition = new Vector2f();
+    protected List<Component> children;
+    protected Vector2f absolutePosition;
     protected Dimensions dimensions;
     protected Margin margin;
     protected Alignment alignment;
@@ -20,17 +22,15 @@ public abstract class Component {
 
     private boolean onHoverCalled, onClickCalled;
 
-    public Component(Dimensions dimensions) { this(dimensions, Alignment.CENTER, new Margin(0), 0); }
-    public Component(Dimensions dimensions, Alignment alignment) { this(dimensions, alignment, new Margin(0), 0); }
-    public Component(Dimensions dimensions, Alignment alignment, Margin margin) { this(dimensions, alignment, margin, 0); }
-
-    public Component(Dimensions dimensions, int zIndex) { this(dimensions, Alignment.CENTER, new Margin(0), zIndex); }
-    public Component(Dimensions dimensions, Alignment alignment, int zIndex) { this(dimensions, alignment, new Margin(0), zIndex); }
-    public Component(Dimensions dimensions, Alignment alignment, Margin margin, int zIndex) {
-        this.alignment = alignment;
+    public Component(@NotNull Dimensions dimensions, Alignment alignment, Margin margin, int zIndex) {
         this.dimensions = dimensions;
-        this.margin = margin;
-        this.zIndex = zIndex;
+        this.margin = margin == null ? new Margin(0) : margin;
+        this.alignment = alignment == null ? Alignment.CENTER : alignment;
+        this.zIndex = zIndex == -1 ? 0 : zIndex;
+        this.children = new ArrayList<>();
+        this.absolutePosition = new Vector2f();
+        this.onHoverCalled = false;
+        this.onClickCalled = false;
     }
 
     public void onClick(float x, float y) { }
@@ -38,7 +38,11 @@ public abstract class Component {
     public void onHoverHold(float x, float y) { }
     public void onClickHold(float x, float y) { }
 
-    public abstract void render();
+    public void render(UIRenderer renderer) {
+        drawComponent(renderer);
+        children.forEach(component -> component.render(renderer));
+    }
+
     public void resize(int parentWidth, int parentHeight, float parentX, float parentY) {
         dimensions.recalculateSize(parentWidth, parentHeight);
         Vector2f offset = alignment.getOffset(dimensions, margin);
@@ -46,12 +50,14 @@ public abstract class Component {
         Vector2f mySize = dimensions.getSize();
         for (Component child : children) child.resize((int) mySize.x, (int) mySize.y, absolutePosition.x, absolutePosition.y);
     }
+
     public boolean update(float deltaTime, boolean alreadyCaptured) {
         boolean hovered = !alreadyCaptured && isHovered();
         boolean capturedInChildren = false;
 
         for (int i = children.size() - 1; i >= 0; i--)
-            if (children.get(i).update(deltaTime, alreadyCaptured || hovered || capturedInChildren)) capturedInChildren = true;
+            if (children.get(i).update(deltaTime, alreadyCaptured || hovered || capturedInChildren))
+                capturedInChildren = true;
 
         if (hovered) {
             if (Input.mouse.isButtonDown(MouseKeys.LEFT)) {
@@ -82,4 +88,7 @@ public abstract class Component {
                 mouseY >= absolutePosition.y &&
                 mouseY <= absolutePosition.y + size.y;
     }
+
+
+    protected abstract void drawComponent(UIRenderer renderer);
 }

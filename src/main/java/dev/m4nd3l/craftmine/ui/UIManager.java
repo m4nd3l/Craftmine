@@ -1,14 +1,21 @@
 package dev.m4nd3l.craftmine.ui;
 
+import dev.m4nd3l.craftmine.renderer.renderers.UIRenderer;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 public class UIManager {
     private List<Frame> activeFrames;
+    private UIRenderer renderer;
 
     public UIManager() { this(new ArrayList<>()); }
-    public UIManager(List<Frame> activeFrames) { this.activeFrames = activeFrames; reorder(); }
+    public UIManager(List<Frame> activeFrames) {
+        this.renderer = new UIRenderer();
+        this.activeFrames = activeFrames;
+        reorder();
+    }
 
     public UIManager addFrame(Frame frame) { activeFrames.add(frame); reorder(); return this; }
     public UIManager removeFrame(Frame frame) { activeFrames.remove(frame); reorder(); return this; }
@@ -19,7 +26,10 @@ public class UIManager {
             if (activeFrames.get(i).update(deltaTime, mouseCaptured)) mouseCaptured = true;
     }
     public void render() { activeFrames.forEach(Frame::render); }
-    public void resize(int width, int height) { activeFrames.forEach(frame -> frame.resize(width, height)); }
+    public void resize(int width, int height) {
+        activeFrames.forEach(frame -> frame.resize(width, height));
+        renderer.updateSize(width, height);
+    }
 
     private void reorder() { activeFrames.sort(Comparator.comparingInt(Frame::getZIndex)); }
 }

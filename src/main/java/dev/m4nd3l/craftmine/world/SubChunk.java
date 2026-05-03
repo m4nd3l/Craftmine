@@ -6,7 +6,7 @@ import dev.m4nd3l.craftmine.global.Consts;
 import dev.m4nd3l.craftmine.registries.BlockRegistries;
 import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
-import dev.m4nd3l.craftmine.renderer.world.SubChunkRenderer;
+import dev.m4nd3l.craftmine.renderer.renderers.SubChunkRenderer;
 import dev.m4nd3l.craftmine.world.communication.Communication;
 import dev.m4nd3l.craftmine.world.communication.WorldCommunication;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
