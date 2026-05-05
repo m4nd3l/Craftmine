@@ -77,6 +77,8 @@ public class HitboxRenderer extends Renderer {
         if (vertices == null || vertices.isEmpty())
             hitboxes.forEach(hitbox -> { for (double f : hitbox.generateVertices()) vertices.add((float) f); });
 
+        if (vertices == null) return;
+
         int size = vertices.size();
         verticesCount = size / 3;
 
@@ -100,8 +102,8 @@ public class HitboxRenderer extends Renderer {
         vao.bind();
         camera.uploadUniforms(shader);
         GL11.glDrawArrays(GL11.GL_LINES, 0, verticesCount);
-        vao.unbind();
         shader.unbind();
+        vao.unbind();
     }
 
     public void swap() { render = !render; }

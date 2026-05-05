@@ -1,6 +1,9 @@
 package dev.m4nd3l.craftmine.ui;
 
+import dev.m4nd3l.craftmine.renderer.renderers.UIRenderer;
+
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
@@ -9,7 +12,8 @@ public class Frame {
     private int zIndex;
 
     public Frame() { this(new ArrayList<>()); }
-    public Frame(List<Component> activeFrames) { this.activeComponents = activeFrames; reorder(); }
+    public Frame(Component... components) { this(Arrays.stream(components).toList()); }
+    public Frame(List<Component> activeFrames) { this.activeComponents = new ArrayList<>(activeFrames); reorder(); }
 
     public Frame addComponent(Component component) { activeComponents.add(component); reorder(); return this; }
     public Frame removeComponent(Component component) { activeComponents.remove(component); reorder(); return this; }
@@ -20,7 +24,8 @@ public class Frame {
             if (activeComponents.get(i).update(deltaTime, mouseCaptured || capturedInFrame)) capturedInFrame = true;
         return capturedInFrame;
     }
-    public void render() { activeComponents.forEach(Component::render); }
+
+    public void pushRendering(UIRenderer renderer) { activeComponents.forEach(component -> component.pushRendering(renderer)); }
     public void resize(int width, int height) { activeComponents.forEach(component -> component.resize(width, height, 0, 0)); }
 
     private void reorder() { activeComponents.sort(Comparator.comparingInt(Component::getZIndex)); }

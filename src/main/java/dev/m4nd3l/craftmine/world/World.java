@@ -184,19 +184,9 @@ public class World {
     }
 
     public BlockRegistry getBlockRegistryRequest(int x, int y, int z) {
-        Chunk chunk = null;
-        if (chunks.entrySet().stream().anyMatch(chunkEntry ->
-                chunkEntry.getKey().getX().equals(x) &&
-                        chunkEntry.getKey().getY().equals(y) &&
-                        chunkEntry.getKey().getZ().equals(z)))
-            chunk = chunks.entrySet().stream()
-                    .filter(chunkEntry ->
-                            chunkEntry.getKey().getX().equals(x) &&
-                                    chunkEntry.getKey().getY().equals(y) &&
-                                    chunkEntry.getKey().getZ().equals(z))
-                    .findFirst()
-                    .orElse(null)
-                    .getValue();
+        ChunkCoordinates chunkCoords = new ChunkCoordinates(x >> 4, z >> 4);
+        Chunk chunk = chunks.get(chunkCoords);
+
         if (chunk == null) return BlockRegistries.AIR;
         return chunk.getBlock(x, y, z);
     }
@@ -305,6 +295,10 @@ public class World {
         Chunk newChunk = new Chunk(chunkCoordinates);
         chunks.put(chunkCoordinates, newChunk);
         return newChunk;
+    }
+
+    public boolean isChunkLoaded(ChunkCoordinates coordinates) {
+        return chunks.containsKey(coordinates);
     }
     // endregion
 }

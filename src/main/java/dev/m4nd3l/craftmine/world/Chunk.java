@@ -6,7 +6,7 @@ import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Spliterator;
@@ -17,7 +17,7 @@ public class Chunk implements Iterable<SubChunk> {
     private ChunkCoordinates coordinates;
 
     public Chunk(ChunkCoordinates coordinates) {
-        subChunks = new ArrayList<>();
+        subChunks = new CopyOnWriteArrayList<>();
         this.coordinates = coordinates;
     }
 

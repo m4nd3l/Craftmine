@@ -25,6 +25,7 @@ public class SubChunk {
     public SubChunk(SubChunkCoordinates coordinates) {
         blocks = new short[Consts.SIZE * Consts.SIZE * Consts.SIZE];
         this.coordinates = coordinates;
+        this.renderer = new SubChunkRenderer();
     }
 
     public SubChunk() {}
@@ -34,6 +35,27 @@ public class SubChunk {
         renderer = renderer.initialize();
         renderer.dirty();
         WorldCommunication.tellWorld(coordinates, Communication.REMESH_REQUEST);
+
+        remeshNeighbor(1, 0, 0);
+        remeshNeighbor(-1, 0, 0);
+        remeshNeighbor(0, 1, 0);
+        remeshNeighbor(0, -1, 0);
+        remeshNeighbor(0, 0, 1);
+        remeshNeighbor(0, 0, -1);
+    }
+
+    private void remeshNeighbor(int dx, int dy, int dz) {
+        SubChunkCoordinates neighborCoords = new SubChunkCoordinates(
+                coordinates.getX() + dx,
+                coordinates.getY() + dy,
+                coordinates.getZ() + dz
+        );
+        WorldCommunication.tellWorld(neighborCoords, Communication.REMESH_REQUEST);
+    }
+
+    public void newMesh(FloatArrayList vertices) {
+        if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
+        else renderer.setVertices(vertices);
     }
 
     public void update(float delta) {
@@ -43,11 +65,11 @@ public class SubChunk {
             renderer.undirty();
         }
     }
+
     public void render(Camera camera) {
-        if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
-        if (isSeen(camera) && renderer != null) renderer.render();
+        if (isSeen(camera)) renderer.render();
     }
-    public void delete() { renderer.delete(); }
+    public void delete() { if (renderer != null) renderer.delete(); }
 
     public void placeBlock(int x, int y, int z, BlockRegistry block) { placeBlock(x, y, z, block, true); }
 
@@ -63,7 +85,6 @@ public class SubChunk {
         blocks[getIndex(x, y, z)] = 0;
     }
 
-    public void newMesh(FloatArrayList vertices) { renderer.setVertices(vertices); }
     public void uploadToGPU() {
         if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
         if (renderer != null) renderer.uploadToGPU();

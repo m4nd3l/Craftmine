@@ -28,7 +28,29 @@ public class Texture {
     private int textureID, width, height;
     private ByteBuffer image;
 
-    public Texture(MFile file) {
+    public Texture(int width, int height, ByteBuffer image) {
+        textureID = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, textureID);
+
+        // Set the texture parameters
+
+        // Repeat the image in both directions
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        // When stretching, pixelate
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        // When shrinking, pixelate
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        if (image != null) {
+            this.width = width;
+            this.height = height;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width,
+                    height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+        } else System.err.println("Error: could not load the image: '" + filePath + "'.\nTrying with the default one...");
+    }
+
+    public Texture(MFile file, boolean flip) {
         filePath = file.getFile().getAbsolutePath();
         textureID = glGenTextures();
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -47,7 +69,7 @@ public class Texture {
         IntBuffer height = BufferUtils.createIntBuffer(1);
         IntBuffer channels = BufferUtils.createIntBuffer(1);
 
-        stbi_set_flip_vertically_on_load(true);
+        stbi_set_flip_vertically_on_load(flip);
 
         // Load the image
         image = stbi_load(filePath, width, height, channels, 4);
@@ -60,6 +82,10 @@ public class Texture {
             stbi_image_free(image);
         } else
             System.err.println("Error: could not load the image: '" + filePath + "'.\nTrying with the default one...");
+    }
+
+    public Texture(MFile file) {
+        this(file, true);
     }
 
     public void bind() {

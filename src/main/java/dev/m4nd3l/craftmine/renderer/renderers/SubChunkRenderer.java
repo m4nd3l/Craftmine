@@ -18,6 +18,8 @@ public class SubChunkRenderer extends Renderer {
 
     @Override
     public void uploadToGPU() {
+        if (vao == null) vao = new VAO();
+        if (vbo == null) vbo = new VBO();
         if (vertices == null || vertices.isEmpty()) return;
 
         int size = vertices.size();
@@ -32,8 +34,6 @@ public class SubChunkRenderer extends Renderer {
         uploadBuffer.put(vertices.elements(), 0, size);
         uploadBuffer.flip();
 
-        if (vao == null) vao = new VAO();
-        if (vbo == null) vbo = new VBO();
         vbo.uploadData(uploadBuffer);
 
         int stride = 15 * Float.BYTES;

@@ -10,18 +10,11 @@ public abstract class Renderer {
     protected transient FloatArrayList vertices;
     protected transient int verticesCount;
 
-    public Renderer() {
-        vao = new VAO();
-        vbo = new VBO();
-        vertices = new FloatArrayList();
-        verticesCount = 0;
-    }
+    public Renderer() {}
 
     public Renderer(float[] vertices) {
-        this();
         this.vertices = new FloatArrayList(vertices);
         this.verticesCount = vertices.length / 15;
-        vbo.uploadData(vertices);
     }
 
     public abstract void uploadToGPU();

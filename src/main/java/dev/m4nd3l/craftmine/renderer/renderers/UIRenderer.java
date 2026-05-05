@@ -8,9 +8,13 @@ import dev.m4nd3l.craftmine.renderer.opengl.VBO;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.ShaderFiles;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.Matrix4fUniform;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
+import dev.m4nd3l.craftmine.ui.design.UIColor;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+
+import java.nio.ByteBuffer;
 
 import static org.lwjgl.opengl.GL11.GL_FLOAT;
 import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
@@ -20,7 +24,7 @@ public class UIRenderer extends Renderer {
     private Matrix4f projectionMatrix;
     private boolean renderActive;
     private Texture currentTexture;
-    private final Texture whiteTexture;
+    private Texture whiteTexture;
 
     public UIRenderer() {
         this.renderActive = true;
@@ -30,24 +34,35 @@ public class UIRenderer extends Renderer {
                 new MFile("assets", "shaders", "ui.frag")
         ));
 
-        this.whiteTexture = new Texture(new MFile("assets", "textures", "white.png"));
+        this.whiteTexture = createWhitePixel();
         this.currentTexture = null;
     }
 
-    public void updateSize(int width, int height) { projectionMatrix.identity().ortho(0, width, height, 0, -1, 1); }
+    public void updateSize(int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        projectionMatrix.identity().ortho(0, width, height, 0, -1, 1);
+    }
 
-    public void addRect(float x, float y, float w, float h, Vector4f color, Texture texture) {
+    public void addRect(float x, float y, float w, float h, UIColor color, Texture texture) {
         Texture texToUse = (texture == null) ? whiteTexture : texture;
         if (currentTexture != null && texToUse != currentTexture) flush();
         this.currentTexture = texToUse;
 
-        pushVertex(x, y, color, 0, 0);
-        pushVertex(x + w, y, color, 1, 0);
-        pushVertex(x + w, y + h, color, 1, 1);
+        pushVertex(x, y, color.getColor(), 0, 0);
+        pushVertex(x + w, y, color.getColor(), 1, 0);
+        pushVertex(x + w, y + h, color.getColor(), 1, 1);
 
-        pushVertex(x, y, color, 0, 0);
-        pushVertex(x + w, y + h, color, 1, 1);
-        pushVertex(x, y + h, color, 0, 1);
+        pushVertex(x, y, color.getColor(), 0, 0);
+        pushVertex(x + w, y + h, color.getColor(), 1, 1);
+        pushVertex(x, y + h, color.getColor(), 0, 1);
+    }
+
+    public static Texture createWhitePixel() {
+        ByteBuffer buffer = BufferUtils.createByteBuffer(4);
+        buffer.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255);
+        buffer.flip();
+
+        return new Texture(1, 1, buffer);
     }
 
     private void pushVertex(float x, float y, Vector4f c, float u, float v) {
@@ -72,7 +87,6 @@ public class UIRenderer extends Renderer {
 
         vao.unbind();
         vertices.clear();
-        verticesCount = 0;
     }
 
     @Override
@@ -100,9 +114,26 @@ public class UIRenderer extends Renderer {
 
     @Override
     public void render() {
+        if (vertices == null) return;
         if (!renderActive) return;
-        flush();
+        if (!vertices.isEmpty()) flush();
+        else if (verticesCount > 0) {
+            shader.bind();
+            shader.uploadUniform(new Matrix4fUniform("uProjection", shader.getShaderID(), projectionMatrix));
+            if (currentTexture != null) currentTexture.bind();
+            vao.bind();
+            GL11.glDrawArrays(GL_TRIANGLES, 0, verticesCount);
+            vao.unbind();
+            shader.unbind();
+        }
     }
 
     public void swap() { this.renderActive = !this.renderActive; }
+
+    @Override
+    public void delete() {
+        super.delete();
+        verticesCount = 0;
+        shader.delete();
+    }
 }
