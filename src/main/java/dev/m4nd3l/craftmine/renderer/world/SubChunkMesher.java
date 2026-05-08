@@ -11,16 +11,14 @@ import it.unimi.dsi.fastutil.floats.FloatArrayList;
 
 public class SubChunkMesher {
 
-    // Small epsilon to prevent texture bleeding from neighboring tiles in the atlas
     private static final float UV_EPSILON = 0.0005f;
 
     public static FloatArrayList generateMesh(SubChunkCoordinates coordinates, short[] blocks) {
-        // Initial capacity: (Blocks per subchunk / 2) * 6 faces * 6 vertices * 15 floats per vertex
         var vertices = new FloatArrayList(20000);
         var origin = CoordinatesConverter.toBlock(coordinates);
 
-        for (int x = 0; x < Consts.SIZE; x++) {
-            for (int y = 0; y < Consts.SIZE; y++) {
+        for (int x = 0; x < Consts.SIZE; x++)
+            for (int y = 0; y < Consts.SIZE; y++)
                 for (int z = 0; z < Consts.SIZE; z++) {
                     short blockID = getBlockID(x, y, z, blocks);
 
@@ -34,8 +32,7 @@ public class SubChunkMesher {
                     checkAndAddFace(x, y, z, 0, 0, -1, 4, blockID, origin, blocks, vertices);
                     checkAndAddFace(x, y, z, 0, 0, 1, 5, blockID, origin, blocks, vertices);
                 }
-            }
-        }
+
         return vertices;
     }
 
@@ -47,24 +44,18 @@ public class SubChunkMesher {
 
         short neighborID;
 
-// Inside SubChunkMesher.checkAndAddFace
         if (nx >= 0 && nx < Consts.SIZE && ny >= 0 && ny < Consts.SIZE && nz >= 0 && nz < Consts.SIZE) {
             neighborID = blocks[nx + Consts.SIZE * (ny + Consts.SIZE * nz)];
         } else {
-            int worldX = origin.getX() + nx;
-            int worldY = origin.getY() + ny;
-            int worldZ = origin.getZ() + nz;
+            int worldX = (int) (origin.getX() + nx);
+            int worldY = (int) (origin.getY() + ny);
+            int worldZ = (int) (origin.getZ() + nz);
 
-            // FIX: If neighbor chunk isn't loaded, don't draw the face.
-            // This prevents borders appearing before the neighbor arrives.
-            if (!WorldCommunication.isChunkAvailable(worldX, worldY, worldZ)) {
-                return;
-            }
+            if (!WorldCommunication.isChunkAvailable(worldX, worldY, worldZ)) return;
 
             neighborID = WorldCommunication.getBlockID(worldX, worldY, worldZ);
         }
 
-        // Only render face if neighbor is air/transparent
         if (isTransparent(neighborID)) {
             addFace(x, y, z, face, blockID, origin, vertices);
         }
@@ -179,7 +170,6 @@ public class SubChunkMesher {
         float uMin = (id % (int) Consts.atlasWidthTiles) * Consts.stepU;
         float vMin = (id / (int) Consts.atlasWidthTiles) * Consts.stepV;
 
-        // Shrink UVs slightly to eliminate border artifacts
         return new float[]{
                 uMin + UV_EPSILON,
                 vMin + UV_EPSILON,

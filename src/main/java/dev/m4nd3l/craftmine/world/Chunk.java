@@ -6,10 +6,8 @@ import dev.m4nd3l.craftmine.registries.registry.BlockRegistry;
 import dev.m4nd3l.craftmine.renderer.Camera;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Spliterator;
 import java.util.function.Consumer;
 
 public class Chunk implements Iterable<SubChunk> {
@@ -23,7 +21,10 @@ public class Chunk implements Iterable<SubChunk> {
 
     public Chunk() {}
 
-    public void loadAfterInit() { subChunks.forEach(SubChunk::postLoadInit); }
+    public void loadAfterInit() {
+        new ArrayList<>(subChunks).forEach(SubChunk::postLoadInit);
+        ensureThreadSafety();
+    }
 
     public void upload(SubChunkCoordinates coordinates) {
         SubChunk subChunk = getSubChunk(coordinates);
@@ -43,13 +44,18 @@ public class Chunk implements Iterable<SubChunk> {
     }
     // endregion
     // region MAIN METHODS
-    public void update(float delta) { subChunks.forEach(subChunk -> subChunk.update(delta)); }
-    public void render(Camera camera) { subChunks.forEach(subChunk -> subChunk.render(camera)); }
+    public void update(float delta) { ensureThreadSafety(); subChunks.forEach(subChunk -> subChunk.update(delta)); }
+    public void render(Camera camera) { ensureThreadSafety(); subChunks.forEach(subChunk -> subChunk.render(camera)); }
     public void delete() { subChunks.forEach(SubChunk::delete); }
     // endregion
     // region HELPERS
+    public void ensureThreadSafety() {
+        if (!(this.subChunks instanceof CopyOnWriteArrayList)) this.subChunks = new CopyOnWriteArrayList<>(this.subChunks);
+    }
+
     public ChunkCoordinates getCoordinates() { return coordinates; }
     public SubChunk getSubChunk(Coordinates coordinates) {
+        ensureThreadSafety();
         SubChunkCoordinates subChunkCoordinates = CoordinatesConverter.toSubChunk(coordinates);
         if (subChunks.stream().anyMatch(subChunk -> subChunk.getCoordinates().equals(subChunkCoordinates)))
             return subChunks.stream()
@@ -62,6 +68,7 @@ public class Chunk implements Iterable<SubChunk> {
     }
 
     public SubChunk getSubChunk(int x, int y, int z) {
+        ensureThreadSafety();
         SubChunkCoordinates subCoords = CoordinatesConverter.toSubChunk(new BlockCoordinates(x, y, z));
         for (SubChunk sc : subChunks) if (sc.getCoordinates().equals(subCoords)) return sc;
         SubChunk newSc = new SubChunk(subCoords);
@@ -70,20 +77,20 @@ public class Chunk implements Iterable<SubChunk> {
     }
 
     public BlockRegistry getBlock(int x, int y, int z) {
-        SubChunk subChunk = null;
-        if (subChunks.stream().anyMatch(subchunk ->
-                subchunk.getCoordinates().getX().equals(x) &&
-                subchunk.getCoordinates().getY().equals(y) &&
-                subchunk.getCoordinates().getZ().equals(z)))
-            subChunk = subChunks.stream()
-                    .filter(subchunk ->
-                            subchunk.getCoordinates().getX().equals(x) &&
-                            subchunk.getCoordinates().getY().equals(y) &&
-                            subchunk.getCoordinates().getZ().equals(z))
-                    .findFirst()
-                    .orElse(null);
-        if (subChunk == null) return BlockRegistries.AIR;
-        return subChunk.getBlock(x & 15, y & 15, z & 15);
+        ensureThreadSafety();
+        List<SubChunk> currentSubChunks = this.subChunks;
+
+        SubChunk target = null;
+        for (SubChunk sc : currentSubChunks)
+            if (sc.getCoordinates().getX() == (x >> 4) &&
+                    sc.getCoordinates().getY() == (y >> 4) &&
+                    sc.getCoordinates().getZ() == (z >> 4)) {
+                target = sc;
+                break;
+            }
+
+        if (target == null) return BlockRegistries.AIR;
+        return target.getBlock(x & 15, y & 15, z & 15);
     }
 
     @NotNull

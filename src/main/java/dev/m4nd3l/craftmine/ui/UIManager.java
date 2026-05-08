@@ -1,11 +1,14 @@
 package dev.m4nd3l.craftmine.ui;
 
+import dev.m4nd3l.craftmine.Main;
 import dev.m4nd3l.craftmine.renderer.renderers.UIRenderer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+
+import static org.lwjgl.opengl.GL11.glViewport;
 
 public class UIManager {
     private List<Frame> activeFrames;
@@ -31,8 +34,12 @@ public class UIManager {
     public void pushRendering() { activeFrames.forEach(frame -> frame.pushRendering(renderer)); renderer.uploadToGPU(); }
     public void render() { renderer.render(); }
     public void resize(int width, int height) {
+        glViewport(0, 0, width, height);
+        if (Main.craftmine.currentWorld != null)
+            Main.craftmine.currentWorld.getData().getPlayer().resizeWindow(width, height);
+        renderer.updateProjection(width, height);
         activeFrames.forEach(frame -> frame.resize(width, height));
-        renderer.updateSize(width, height);
+        pushRendering();
     }
 
     private void reorder() { activeFrames.sort(Comparator.comparingInt(Frame::getZIndex)); }

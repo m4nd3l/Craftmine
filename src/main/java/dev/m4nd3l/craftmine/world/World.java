@@ -79,9 +79,9 @@ public class World {
 
         entityRenderer = new EntityRenderer(data.getPlayer());
 
-        meshingThreads = new MultiThread<>(8);
-        loadingChunkThreads = new MultiThread<>(5);
-        unloadingChunkThreads = new MultiThread<>(5);
+        meshingThreads = new MultiThread<>(16);
+        loadingChunkThreads = new MultiThread<>(10);
+        unloadingChunkThreads = new MultiThread<>(10);
 
         updateLoadedChunks(data.getPlayer().getEntityPosition(), -1);
     }
@@ -90,10 +90,10 @@ public class World {
 
     // region INTERACTION
     public void placeBlock(BlockCoordinates coordinates, BlockRegistry block) {
-        getChunk(coordinates).placeBlock(coordinates.getX(), coordinates.getY(), coordinates.getZ(), block);
+        getChunk(coordinates).placeBlock((int) coordinates.getX(), (int) coordinates.getY(), (int) coordinates.getZ(), block);
     }
     public void digBlock(BlockCoordinates coordinates) {
-        getChunk(coordinates).digBlock(coordinates.getX(), coordinates.getY(), coordinates.getZ());
+        getChunk(coordinates).digBlock((int) coordinates.getX(), (int) coordinates.getY(), (int) coordinates.getZ());
     }
     // endregion
     // region WORLD GEN
@@ -119,15 +119,15 @@ public class World {
 
         for (int x = -renderDistance; x <= renderDistance; x++) {
             for (int z = -renderDistance; z <= renderDistance; z++) {
-                var coordinates = new ChunkCoordinates(centerChunk.getX() + x, centerChunk.getZ() + z);
+                var coordinates = new ChunkCoordinates((int) centerChunk.getX() + x, (int) centerChunk.getZ() + z);
                 allowedCoords.add(coordinates);
                 if (!chunks.containsKey(coordinates)) newSpiralList.add(coordinates);
             }
         }
 
         newSpiralList.sort(Comparator.comparingInt(c -> {
-            int dx = c.getX() - centerChunk.getX();
-            int dz = c.getZ() - centerChunk.getZ();
+            int dx = (int) (c.getX() - centerChunk.getX());
+            int dz = (int) (c.getZ() - centerChunk.getZ());
             return (dx * dx + dz * dz);
         }));
 
@@ -153,13 +153,15 @@ public class World {
                 if (json == null || json.isEmpty()) return;
                 Chunk chunk = Consts.gson.fromJson(json, Chunk.class);
                 if (chunk == null) chunk = generateChunk(coordinates);
+                else chunk.ensureThreadSafety();
                 chunks.put(coordinates, chunk);
                 chunkQueue.add(chunk);
             });
         } else {
             loadingChunkThreads.addToQueue(coordinates, () -> {
                 Chunk chunk = generateChunk(coordinates);
-                if (chunk == null) return;
+                if (chunk == null) chunk = generateChunk(coordinates);
+                else chunk.ensureThreadSafety();
                 chunks.put(coordinates, chunk);
                 chunkQueue.add(chunk);
             });
@@ -210,14 +212,17 @@ public class World {
     public void update(float delta) {
         data.getPlayer().processKeyboard(Input.keyboard, delta);
         data.getPlayer().processMouseMovement(Input.mouse);
+
         data.getPlayer().updateMatrices();
 
         if (Input.keyboard.isControlDown() &&
-            Input.keyboard.isKeyPressed(KeyboardKeys.K) &&
-            Main.craftmine.debug) data.getPlayer().frustumFreeze = !data.getPlayer().frustumFreeze;
+                Input.keyboard.isKeyPressed(KeyboardKeys.K) &&
+                Main.craftmine.debug) data.getPlayer().frustumFreeze = !data.getPlayer().frustumFreeze;
 
         if (Input.keyboard.isControlDown() &&
-            Input.keyboard.isKeyPressed(KeyboardKeys.H)) entityRenderer.swapHitboxes();
+                Input.keyboard.isKeyPressed(KeyboardKeys.H)) entityRenderer.swapHitboxes();
+
+        if (!data.getPlayer().frustumFreeze) data.getPlayer().updateFrustum();
 
         for (int i = 0; i < 15; i++) {
             Chunk polled = chunkQueue.poll();
@@ -241,7 +246,6 @@ public class World {
     }
 
     public void render() {
-        if (!data.getPlayer().frustumFreeze) data.getPlayer().updateFrustum();
         shader.bind();
         Consts.texture.bind();
         data.getPlayer().uploadUniforms(shader);
@@ -250,6 +254,11 @@ public class World {
         Consts.texture.unbind();
         shader.unbind();
         entityRenderer.render();
+    }
+
+
+    public void tick() {
+        // CROPS AND STUFF
     }
 
     public void delete() {
@@ -297,8 +306,7 @@ public class World {
         return newChunk;
     }
 
-    public boolean isChunkLoaded(ChunkCoordinates coordinates) {
-        return chunks.containsKey(coordinates);
-    }
+    public boolean isChunkLoaded(ChunkCoordinates coordinates) { return chunks.containsKey(coordinates); }
+    public WorldData getData() { return data; }
     // endregion
 }

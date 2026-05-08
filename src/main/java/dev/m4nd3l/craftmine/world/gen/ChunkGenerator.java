@@ -13,8 +13,8 @@ public class ChunkGenerator {
 
     public void generate(Chunk chunk) {
         ChunkCoordinates coords = chunk.getCoordinates();
-        int worldX = coords.getX() * 16;
-        int worldZ = coords.getZ() * 16;
+        int worldX = (int) coords.getX() * 16;
+        int worldZ = (int) coords.getZ() * 16;
 
         for (int x = 0; x < 16; x++)
             for (int z = 0; z < 16; z++) {

@@ -32,6 +32,7 @@ import dev.m4nd3l.craftmine.renderer.opengl.VAO;
 import dev.m4nd3l.craftmine.renderer.opengl.VBO;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.ShaderFiles;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
@@ -74,8 +75,10 @@ public class HitboxRenderer extends Renderer {
 
     @Override
     public void uploadToGPU() {
-        if (vertices == null || vertices.isEmpty())
+        if (vertices == null || vertices.isEmpty()) {
+            vertices = new FloatArrayList();
             hitboxes.forEach(hitbox -> { for (double f : hitbox.generateVertices()) vertices.add((float) f); });
+        }
 
         if (vertices == null) return;
 
@@ -98,6 +101,11 @@ public class HitboxRenderer extends Renderer {
     @Override
     public void render() {
         if (!render) return;
+        if (vao == null) {
+            uploadToGPU();
+            return;
+        }
+
         shader.bind();
         vao.bind();
         camera.uploadUniforms(shader);

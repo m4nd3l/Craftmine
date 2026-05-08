@@ -1,20 +1,24 @@
-package dev.m4nd3l.craftmine.ui.components;
+package dev.m4nd3l.craftmine.ui.components.visual;
 
 import dev.m4nd3l.craftmine.renderer.renderers.UIRenderer;
 import dev.m4nd3l.craftmine.ui.Component;
 import dev.m4nd3l.craftmine.ui.design.UIColor;
-import dev.m4nd3l.craftmine.ui.layout.Alignment;
+import dev.m4nd3l.craftmine.ui.design.UIColors;
 import dev.m4nd3l.craftmine.ui.layout.Dimensions;
-import dev.m4nd3l.craftmine.ui.layout.Margin;
 import org.joml.Vector2f;
 
 public class UIPanel extends Component {
     private UIColor color;
 
-    public UIPanel(Dimensions dimensions, Alignment alignment, Margin margin, int zIndex, UIColor color) {
-        super(dimensions, alignment, margin, zIndex);
+    public UIPanel(Dimensions dimensions) { this(dimensions, new UIColor(UIColors.RED)); }
+    public UIPanel(Dimensions dimensions, UIColors color) { this(dimensions, new UIColor(color)); }
+    public UIPanel(Dimensions dimensions, UIColor color) {
+        super(dimensions);
         this.color = color;
     }
+
+    public UIPanel setColor(UIColors color) { return setColor(new UIColor(color)); }
+    public UIPanel setColor(UIColor color) { this.color = color; pushRenderingAgain(); return this; }
 
     @Override
     public void pushRendering(UIRenderer renderer) {

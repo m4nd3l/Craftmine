@@ -28,6 +28,7 @@ public class Texture {
     private int textureID, width, height;
     private ByteBuffer image;
 
+    public Texture(MFile file) { this(file, true); }
     public Texture(int width, int height, ByteBuffer image) {
         textureID = glGenTextures();
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -49,7 +50,6 @@ public class Texture {
                     height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
         } else System.err.println("Error: could not load the image: '" + filePath + "'.\nTrying with the default one...");
     }
-
     public Texture(MFile file, boolean flip) {
         filePath = file.getFile().getAbsolutePath();
         textureID = glGenTextures();
@@ -84,26 +84,10 @@ public class Texture {
             System.err.println("Error: could not load the image: '" + filePath + "'.\nTrying with the default one...");
     }
 
-    public Texture(MFile file) {
-        this(file, true);
-    }
-
-    public void bind() {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-    }
+    public void bind() { glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, textureID); }
     public void unbind() { glBindTexture(GL_TEXTURE_2D, 0); }
     public void delete() { glDeleteTextures(textureID); }
 
     public int getAtlasXSize() { return width / 16; }
     public int getAtlasYSize() { return height / 16; }
-
-    public Vector4f getUVs(int xGrid, int yGrid, int spriteWidth, int spriteHeight) {
-        float uMin = (float) (xGrid * spriteWidth) / this.width;
-        float vMin = (float) (yGrid * spriteHeight) / this.height;
-        float uMax = (float) (xGrid * spriteWidth + spriteWidth) / this.width;
-        float vMax = (float) (yGrid * spriteHeight + spriteHeight) / this.height;
-
-        return new Vector4f(uMin, vMin, uMax, vMax);
-    }
 }

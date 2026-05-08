@@ -33,8 +33,8 @@ public enum Alignment {
         Vector2f parentSize = dimensions.getParentSize();
         Vector2f compSize = dimensions.getSize();
 
-        float x = (parentSize.x * xRatio) - (compSize.x * xRatio) + margin.getLeftMargin();
-        float y = (parentSize.y * yRatio) - (compSize.y * yRatio) + margin.getTopMargin();
+        float x = ((parentSize.x * xRatio) - (compSize.x * xRatio) + margin.getLeftMargin());
+        float y = ((parentSize.y * yRatio) - (compSize.y * yRatio) + margin.getTopMargin());
 
         return new Vector2f(x, y);
     }

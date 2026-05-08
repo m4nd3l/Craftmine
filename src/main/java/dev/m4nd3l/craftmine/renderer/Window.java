@@ -57,12 +57,13 @@ public class Window {
 
     private void gameLoop() {
         double lastTime = glfwGetTime();
-        double lag = 0.0;
+        double lag = 0.0, tickLag = 0.0;
 
         double fpsTimer = 0.0;
         int FPSCounter = 0;
 
-        float timePerFrame = 0.0166666667f;
+        float updateTick = 1.0f / 20.0f;
+        float timePerFrame = 1.0f / 60.0f;
 
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -73,10 +74,16 @@ public class Window {
             double deltaTime = currentTime - lastTime;
             lastTime = currentTime;
             lag += deltaTime;
+            tickLag += deltaTime;
 
             glfwPollEvents();
 
             glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+            while (tickLag >= updateTick) {
+                craftmine.tick();
+                tickLag -= updateTick;
+            }
 
             while (lag >= timePerFrame) {
                 craftmine.update(timePerFrame);

@@ -9,6 +9,7 @@ import dev.m4nd3l.craftmine.renderer.opengl.shaders.ShaderFiles;
 import dev.m4nd3l.craftmine.renderer.opengl.shaders.uniforms.Matrix4fUniform;
 import dev.m4nd3l.craftmine.renderer.util.MFile;
 import dev.m4nd3l.craftmine.ui.design.UIColor;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
@@ -38,23 +39,48 @@ public class UIRenderer extends Renderer {
         this.currentTexture = null;
     }
 
-    public void updateSize(int width, int height) {
-        if (width <= 0 || height <= 0) return;
-        projectionMatrix.identity().ortho(0, width, height, 0, -1, 1);
+    public void updateProjection(int width, int height) {
+        this.projectionMatrix = new Matrix4f().ortho(0, width, height, 0, -1, 1);
     }
 
     public void addRect(float x, float y, float w, float h, UIColor color, Texture texture) {
+        float uMin = 0.0f, uMax = 1.0f, vMin = 0.0f, vMax = 1.0f;
+        addRect(x, y, w, h, color, texture, uMin, vMin, uMax, vMax);
+    }
+
+    public void addRect(float x, float y, float w, float h, UIColor color, Texture texture, float uMin, float vMin, float uMax, float vMax) {
         Texture texToUse = (texture == null) ? whiteTexture : texture;
         if (currentTexture != null && texToUse != currentTexture) flush();
         this.currentTexture = texToUse;
 
-        pushVertex(x, y, color.getColor(), 0, 0);
-        pushVertex(x + w, y, color.getColor(), 1, 0);
-        pushVertex(x + w, y + h, color.getColor(), 1, 1);
+        Vector4f colorVector = color.getColor();
 
-        pushVertex(x, y, color.getColor(), 0, 0);
-        pushVertex(x + w, y + h, color.getColor(), 1, 1);
-        pushVertex(x, y + h, color.getColor(), 0, 1);
+        pushVertex(x, y, colorVector, uMin, vMin);
+        pushVertex(x + w, y, colorVector, uMax, vMin);
+        pushVertex(x + w, y + h, colorVector, uMax, vMax);
+
+        pushVertex(x, y, colorVector, uMin, vMin);
+        pushVertex(x + w, y + h, colorVector, uMax, vMax);
+        pushVertex(x, y + h, colorVector, uMin, vMax);
+    }
+
+    public void addRotatedRect(float x, float y, float w, float h, UIColor color, Texture texture,
+                               float u0, float v0, float u1, float v1,
+                               float u2, float v2, float u3, float v3) {
+
+        Texture texToUse = (texture == null) ? whiteTexture : texture;
+        if (currentTexture != null && texToUse != currentTexture) flush();
+        this.currentTexture = texToUse;
+
+        Vector4f colorVector = color.getColor();
+
+        pushVertex(x, y, colorVector, u0, v0);
+        pushVertex(x + w, y, colorVector, u1, v1);
+        pushVertex(x + w, y + h, colorVector, u2, v2);
+
+        pushVertex(x, y, colorVector, u0, v0);
+        pushVertex(x + w, y + h, colorVector, u2, v2);
+        pushVertex(x, y + h, colorVector, u3, v3);
     }
 
     public static Texture createWhitePixel() {
@@ -66,6 +92,7 @@ public class UIRenderer extends Renderer {
     }
 
     private void pushVertex(float x, float y, Vector4f c, float u, float v) {
+        if (vertices == null) vertices = new FloatArrayList();
         vertices.add(x); vertices.add(y);
         vertices.add(c.x); vertices.add(c.y);
         vertices.add(c.z); vertices.add(c.w);

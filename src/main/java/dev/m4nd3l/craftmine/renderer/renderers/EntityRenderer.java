@@ -43,7 +43,6 @@ public class EntityRenderer extends Renderer {
 
     @Override
     public void uploadToGPU() {
-
         hitboxRenderer.uploadToGPU();
     }
 
@@ -55,6 +54,7 @@ public class EntityRenderer extends Renderer {
 
     public void swapHitboxes() {
         hitboxRenderer.swap();
+        uploadToGPU();
     }
 
     @Override

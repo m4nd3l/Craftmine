@@ -1,36 +1,61 @@
 package dev.m4nd3l.craftmine.coordinates;
 
 import java.util.Objects;
-import java.util.function.BinaryOperator;
+public class Coordinates {
 
-public class Coordinates<T> {
-    private T x, y, z;
+    private float x, y, z;
 
-    public Coordinates(T x, T y, T z) {
+    public Coordinates(int x, int y, int z) { this((float) x, (float) y, (float) z); }
+    public Coordinates(float x, float y, float z) {
         this.x = x;
         this.y = y;
         this.z = z;
     }
 
+
     public Coordinates() {}
 
-    public T getX() { return x; }
-    public T getY() { return y; }
-    public T getZ() { return z; }
+    public float getX() { return x; }
+    public float getY() { return y; }
+    public float getZ() { return z; }
 
-    public Coordinates<T> setX(T x) { this.x = x; return this; }
-    public Coordinates<T> setY(T y) { this.y = y; return this; }
-    public Coordinates<T> setZ(T z) { this.z = z; return this; }
+    public Coordinates setX(float x) { this.x = x; return this; }
+    public Coordinates setY(float y) { this.y = y; return this; }
+    public Coordinates setZ(float z) { this.z = z; return this; }
 
-    public Coordinates<T> operation(T x, T y, T z, BinaryOperator<T> operation) {
-        this.x = operation.apply(this.x, x);
-        this.y = operation.apply(this.y, y);
-        this.z = operation.apply(this.z, z);
+    public Coordinates sum(Coordinates other) {
+        this.x += other.getX();
+        this.y += other.getY();
+        this.z += other.getZ();
         return this;
     }
 
-    public Coordinates<T> operation(Coordinates<T> other, BinaryOperator<T> operation) {
-        return operation(other.getX(), other.getY(), other.getZ(), operation);
+    public Coordinates subtract(Coordinates other) {
+        this.x -= other.getX();
+        this.y -= other.getY();
+        this.z -= other.getZ();
+        return this;
+    }
+
+    public Coordinates multiply(Coordinates other) {
+        this.x *= other.getX();
+        this.y *= other.getY();
+        this.z *= other.getZ();
+        return this;
+    }
+
+    public Coordinates divide(Coordinates other) {
+        this.x /= other.getX();
+        this.y /= other.getY();
+        this.z /= other.getZ();
+        return this;
+    }
+
+    public Coordinates operation(Coordinates other, Operation operation) {
+        this.x = operation.run(this.x, other.getX());
+        this.y = operation.run(this.y, other.getY());
+        this.z = operation.run(this.z, other.getZ());
+        return this;
     }
 
     @Override
@@ -40,10 +65,12 @@ public class Coordinates<T> {
 
     @Override
     public boolean equals(Object obj) {
-        if (obj instanceof Coordinates c) return getX().equals(c.getX()) && getY().equals(c.getY()) && getZ().equals(c.getZ());
+        if (obj instanceof Coordinates c) return Objects.equals(getX(), c.getX()) && Objects.equals(getY(), c.getY()) && Objects.equals(getZ(), c.getZ());
         return false;
     }
 
     @Override
     public int hashCode() { return Objects.hash(x, y, z); }
 }
+
+interface Operation {  float run(float thisX, float otherX); }

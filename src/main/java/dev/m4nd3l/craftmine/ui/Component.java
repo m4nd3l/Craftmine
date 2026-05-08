@@ -11,6 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import org.joml.Vector2f;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
@@ -22,40 +23,50 @@ public abstract class Component {
     protected Alignment alignment;
     protected int zIndex;
 
-    private boolean onHoverCalled, onClickCalled;
+    protected boolean onHoverCalled, onClickCalled;
 
-    public Component(@NotNull Dimensions dimensions, Alignment alignment, Margin margin, int zIndex) {
+    public Component(@NotNull Dimensions dimensions) {
         this.dimensions = dimensions;
-        this.margin = margin == null ? new Margin(0) : margin;
-        this.alignment = alignment == null ? Alignment.CENTER : alignment;
-        this.zIndex = zIndex == -1 ? 0 : zIndex;
-        this.children = new ArrayList<>();
         this.absolutePosition = new Vector2f();
+
+        margin = new Margin(0);
+        alignment = Alignment.CENTER;
+        zIndex = 0;
+
+        this.children = new ArrayList<>();
+
         this.onHoverCalled = false;
         this.onClickCalled = false;
     }
 
     public Component addComponent(Component component) { component.setParentSize(dimensions.getSize()); children.add(component); reorder(); return this; }
+    public Component addComponent(Component... componentsArray) {
+        List<Component> components = new ArrayList<>(Arrays.stream(componentsArray).toList());
+        Vector2f size = dimensions.getSize();
+        components.forEach(component -> component.setParentSize(size));
+        children.addAll(components);
+        reorder();
+        return this;
+    }
 
     public Component removeComponent(Component component) { children.remove(component); reorder(); return this; }
     private void reorder() { children.sort(Comparator.comparingInt(Component::getZIndex)); }
 
     public void onClick(float x, float y) { }
+    public void onClickHold(float x, float y) { }
     public void onHover(float x, float y) { }
     public void onHoverHold(float x, float y) { }
-    public void onClickHold(float x, float y) { }
 
     public abstract void pushRendering(UIRenderer renderer);
     public void finishPushRendering(UIRenderer renderer) {
         children.forEach(children -> children.pushRendering(renderer));
     }
 
-    public void resize(int parentWidth, int parentHeight, float parentX, float parentY) {
+    public void resize(float parentWidth, float parentHeight, float parentX, float parentY) {
         dimensions.recalculateSize(parentWidth, parentHeight);
-        Vector2f offset = alignment != null ? alignment.getOffset(dimensions, margin) : new Vector2f(0.0f, 0.0f);
-        this.absolutePosition.set(parentX + offset.x, parentY + offset.y);
+        this.absolutePosition = alignment.getOffset(dimensions, margin).add(parentX, parentY);
         Vector2f mySize = dimensions.getSize();
-        for (Component child : children) child.resize((int) mySize.x, (int) mySize.y, absolutePosition.x, absolutePosition.y);
+        children.forEach(child -> child.resize((int) mySize.x, (int) mySize.y, absolutePosition.x, absolutePosition.y));
     }
 
     public boolean update(float deltaTime, boolean alreadyCaptured) {
@@ -73,7 +84,7 @@ public abstract class Component {
                 onClickHold((float) Input.mouse.getX(), (float) Input.mouse.getY());
             } else onClickCalled = false;
 
-            if (!onHoverCalled) onHover((float) Input.mouse.getX(), (float) Input.mouse.getY());
+            if (!onHoverCalled && !onClickCalled) onHover((float) Input.mouse.getX(), (float) Input.mouse.getY());
             onHoverCalled = true;
             onHoverHold((float) Input.mouse.getX(), (float) Input.mouse.getY());
         } else {

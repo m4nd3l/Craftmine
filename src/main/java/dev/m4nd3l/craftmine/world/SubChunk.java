@@ -46,9 +46,9 @@ public class SubChunk {
 
     private void remeshNeighbor(int dx, int dy, int dz) {
         SubChunkCoordinates neighborCoords = new SubChunkCoordinates(
-                coordinates.getX() + dx,
-                coordinates.getY() + dy,
-                coordinates.getZ() + dz
+                (int) coordinates.getX() + dx,
+                (int) coordinates.getY() + dy,
+                (int) coordinates.getZ() + dz
         );
         WorldCommunication.tellWorld(neighborCoords, Communication.REMESH_REQUEST);
     }
@@ -67,7 +67,8 @@ public class SubChunk {
     }
 
     public void render(Camera camera) {
-        if (isSeen(camera)) renderer.render();
+        if (renderer == null) WorldCommunication.tellWorld(coordinates, Communication.INITIALIZE_SUBCHUNK);
+        if (renderer != null && isSeen(camera)) renderer.render();
     }
     public void delete() { if (renderer != null) renderer.delete(); }
 

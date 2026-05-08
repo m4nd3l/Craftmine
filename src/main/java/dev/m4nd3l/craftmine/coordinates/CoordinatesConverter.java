@@ -1,71 +1,73 @@
 package dev.m4nd3l.craftmine.coordinates;
 
-import java.util.function.Function;
-
 public class CoordinatesConverter {
-
-    public static BlockCoordinates toBlock(Coordinates<?> source) {
-        if (source instanceof BlockCoordinates b) return b;
-        if (source instanceof EntityCoordinates e) return transform(e, f -> (int) Math.floor(f), BlockCoordinates::new);
-        if (source instanceof ChunkCoordinates c) return transform(c, i -> i << 4, BlockCoordinates::new);
-        if (source instanceof LocalSubChunkCoordinates s) return transform(s, i -> i << 4, BlockCoordinates::new);
-        if (source instanceof SubChunkCoordinates s) return transform(s, i -> i << 4, BlockCoordinates::new);
-
-        return handleUnsupported(source, "BlockCoordinates");
+    public static BlockCoordinates toBlock(Coordinates source) {
+        return switch (source) {
+            case BlockCoordinates b -> b;
+            case EntityCoordinates e -> new BlockCoordinates(
+                    (int) Math.floor(e.getX()),
+                    (int) Math.floor(e.getY()),
+                    (int) Math.floor(e.getZ())
+            );
+            case ChunkCoordinates c -> new BlockCoordinates((int) c.getX() << 4, 0, (int) c.getZ() << 4);
+            case SubChunkCoordinates s -> new BlockCoordinates((int) s.getX() << 4, (int) s.getY() << 4, (int) s.getZ() << 4);
+            case LocalSubChunkCoordinates l -> new BlockCoordinates((int) l.getX(), (int) l.getY(), (int) l.getZ());
+            default -> throw new IllegalStateException("Unexpected value: " + source);
+        };
     }
 
-    public static ChunkCoordinates toChunk(Coordinates<?> source) {
-        if (source instanceof ChunkCoordinates c) return c;
-        if (source instanceof BlockCoordinates b) return transform(b, i -> i >> 4, (x, _, z) -> new ChunkCoordinates(x, z));
-        if (source instanceof EntityCoordinates e) return transform(e, f -> (int) Math.floor(f) >> 4, (x, _, z) -> new ChunkCoordinates(x, z));
-        if (source instanceof SubChunkCoordinates e) return new ChunkCoordinates(e.getX(), e.getZ());
-
-        return handleUnsupported(source, "ChunkCoordinates");
+    public static ChunkCoordinates toChunk(Coordinates source) {
+        return switch (source) {
+            case ChunkCoordinates c -> c;
+            case BlockCoordinates b -> new ChunkCoordinates((int) b.getX() >> 4, (int) b.getZ() >> 4);
+            case EntityCoordinates e -> new ChunkCoordinates((int) Math.floor(e.getX()) >> 4, (int) Math.floor(e.getZ()) >> 4);
+            case SubChunkCoordinates s -> new ChunkCoordinates((int) s.getX(), (int) s.getZ());
+            case LocalSubChunkCoordinates l -> throw new UnsupportedOperationException("Cannot determine global chunk from local coordinates alone.");
+            default -> throw new IllegalStateException("Unexpected value: " + source);
+        };
     }
 
-    public static LocalSubChunkCoordinates toLocalSubChunk(Coordinates<?> source) {
-        if (source instanceof LocalSubChunkCoordinates s) return s;
-        if (source instanceof BlockCoordinates b) return transform(b, i -> i & 15, LocalSubChunkCoordinates::new);
-        if (source instanceof EntityCoordinates e) return transform(e, f -> (int) Math.floor(f) & 15, LocalSubChunkCoordinates::new);
+    public static SubChunkCoordinates toSubChunk(Coordinates source) {
+        return switch (source) {
+            case SubChunkCoordinates s -> s;
+            case BlockCoordinates b -> new SubChunkCoordinates(
+                    (int) b.getX() >> 4,
+                    (int) b.getY() >> 4,
+                    (int) b.getZ() >> 4
+            );
+            case EntityCoordinates e -> new SubChunkCoordinates(
+                    (int) Math.floor(e.getX()) >> 4,
+                    (int) Math.floor(e.getY()) >> 4,
+                    (int) Math.floor(e.getZ()) >> 4
+            );
+            case ChunkCoordinates c -> new SubChunkCoordinates(
+                    (int) c.getX(),
+                    0,
+                    (int) c.getZ()
+            );
 
-        return handleUnsupported(source, "SubChunkCoordinates");
+            case LocalSubChunkCoordinates l -> throw new UnsupportedOperationException("Local coordinates do not contain global SubChunk index information.");
+            default -> throw new IllegalStateException("Unexpected value: " + source);
+        };
     }
 
-    public static SubChunkCoordinates toSubChunk(Coordinates<?> source) {
-        if (source instanceof SubChunkCoordinates s) return s;
-        if (source instanceof BlockCoordinates b) return transform(b, i -> i >> 4, SubChunkCoordinates::new);
-        if (source instanceof EntityCoordinates e) return transform(e, f -> (int) Math.floor(f) >> 4, SubChunkCoordinates::new);
-
-        return handleUnsupported(source, "SubChunkCoordinates");
+    public static LocalSubChunkCoordinates toLocalSubChunk(Coordinates source) {
+        return switch (source) {
+            case LocalSubChunkCoordinates l -> l;
+            case BlockCoordinates b -> new LocalSubChunkCoordinates((int) b.getX() & 15, (int) b.getY() & 15, (int) b.getZ() & 15);
+            case EntityCoordinates e -> new LocalSubChunkCoordinates(
+                    (int) Math.floor(e.getX()) & 15,
+                    (int) Math.floor(e.getY()) & 15,
+                    (int) Math.floor(e.getZ()) & 15
+            );
+            default -> throw new IllegalArgumentException("Source type too coarse for local conversion");
+        };
     }
 
-    public static EntityCoordinates toEntity(Coordinates<?> source) {
+    public static EntityCoordinates toEntity(Coordinates source) {
         if (source instanceof EntityCoordinates e) return e;
-        if (source instanceof BlockCoordinates b) return transform(b, Integer::floatValue, EntityCoordinates::new);
-        if (source instanceof ChunkCoordinates c) return transform(c, i -> (float)(i << 4), EntityCoordinates::new);
 
-        return handleUnsupported(source, "EntityCoordinates");
-    }
-
-    // --- HELPER METHODS ---
-
-    private static <S, D, SC extends Coordinates<S>, DC extends Coordinates<D>> DC transform(
-            SC source,
-            Function<S, D> operation,
-            CoordinateFactory<D, DC> factory) {
-        return factory.create(
-                operation.apply(source.getX()),
-                operation.apply(source.getY()),
-                operation.apply(source.getZ())
-        );
-    }
-
-    private static <R> R handleUnsupported(Coordinates<?> source, String target) {
-        throw new IllegalArgumentException("Cannot convert " + source.getClass().getSimpleName() + " to " + target);
-    }
-
-    @FunctionalInterface
-    interface CoordinateFactory<T, R> {
-        R create(T x, T y, T z);
+        BlockCoordinates b = toBlock(source);
+        return new EntityCoordinates(b.getX(), b.getY(), b.getZ());
     }
 }

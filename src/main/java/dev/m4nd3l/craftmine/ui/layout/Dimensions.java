@@ -23,6 +23,7 @@ public class Dimensions {
 
     public void recalculateSize(float width, float height) {
         if (parentSizeRef == null) parentSizeRef = new Vector2f();
+        parentSizeRef.set(width, height);
         size.x = width * (xPercent / 100f);
         size.y = height * (yPercent / 100f);
     }
